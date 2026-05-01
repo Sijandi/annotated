@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { SourceBadge } from "@/components/SourceBadge";
-import { timeAgo } from "@/components/TimeAgo";
+import { timeAgo } from "@/lib/time";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
