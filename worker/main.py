@@ -129,22 +129,20 @@ def _process_youtube(url: str, start: float, duration: float, output_path: Path)
     tmpdir = output_path.parent
     raw_path = tmpdir / "raw_download.mp4"
 
-    # Step 1: Download with cookies for auth
-    dl_cmd = [
-        "yt-dlp",
-        "-f", "b",
-        "--no-warnings",
-        "-o", str(raw_path),
-    ]
-
     # Write cookies file if available
-    cookies_path = None
+    cookies_args = []
     if YT_COOKIES_B64:
         cookies_path = tmpdir / "cookies.txt"
         cookies_path.write_bytes(base64.b64decode(YT_COOKIES_B64))
-        dl_cmd.extend(["--cookies", str(cookies_path)])
+        cookies_args = ["--cookies", str(cookies_path)]
 
-    dl_cmd.append(url)
+    # List available formats for debugging
+    list_cmd = ["yt-dlp", "--list-formats"] + cookies_args + [url]
+    list_result = subprocess.run(list_cmd, capture_output=True, text=True, timeout=60)
+    print(f"[worker] available formats:\n{list_result.stdout}\n{list_result.stderr}")
+
+    # Step 1: Download - no format filter, let yt-dlp pick best
+    dl_cmd = ["yt-dlp", "--no-warnings", "-o", str(raw_path)] + cookies_args + [url]
     subprocess.run(dl_cmd, check=True, capture_output=True, text=True, timeout=300)
 
     # Step 2: Clip and downscale with ffmpeg
