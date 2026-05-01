@@ -136,14 +136,26 @@ def _process_youtube(url: str, start: float, duration: float, output_path: Path)
         cookies_path.write_bytes(base64.b64decode(YT_COOKIES_B64))
         cookies_args = ["--cookies", str(cookies_path)]
 
-    # List available formats for debugging
-    list_cmd = ["yt-dlp", "--list-formats"] + cookies_args + [url]
-    list_result = subprocess.run(list_cmd, capture_output=True, text=True, timeout=60)
-    print(f"[worker] available formats:\n{list_result.stdout}\n{list_result.stderr}")
+    # Step 1: Download using tv_embedded client which still has direct URLs
+    dl_cmd = [
+        "yt-dlp",
+        "--extractor-args", "youtube:player_client=tv",
+        "--no-warnings",
+        "-o", str(raw_path),
+    ] + cookies_args + [url]
+    result = subprocess.run(dl_cmd, capture_output=True, text=True, timeout=300)
 
-    # Step 1: Download - no format filter, let yt-dlp pick best
-    dl_cmd = ["yt-dlp", "--no-warnings", "-o", str(raw_path)] + cookies_args + [url]
-    subprocess.run(dl_cmd, check=True, capture_output=True, text=True, timeout=300)
+    # If tv client fails, try without cookies (some videos work without auth)
+    if result.returncode != 0:
+        print(f"[worker] tv client failed: {result.stderr[:200]}, trying no-cookies")
+        dl_cmd2 = [
+            "yt-dlp",
+            "--extractor-args", "youtube:player_client=tv",
+            "--no-warnings",
+            "-o", str(raw_path),
+            url,
+        ]
+        subprocess.run(dl_cmd2, check=True, capture_output=True, text=True, timeout=300)
 
     # Step 2: Clip and downscale with ffmpeg
     clip_cmd = [
