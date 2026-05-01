@@ -133,16 +133,26 @@ export function Capture({ session }: { session: Session }) {
         const clipDuration = clipState.clipEnd! - clipState.clipStart!;
 
         // Get tab capture stream ID
-        const captureResponse = await new Promise<{ streamId?: string; error?: string }>((resolve) => {
-          chrome.runtime.sendMessage({ type: 'CAPTURE_TAB', tabId: tab.id }, resolve);
+        const captureResponse = await new Promise<{ streamId?: string; error?: string }>((resolve, reject) => {
+          chrome.runtime.sendMessage({ type: 'CAPTURE_TAB', tabId: tab.id }, (res) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+              return;
+            }
+            resolve(res || { error: 'No response from background' });
+          });
         });
-        if (captureResponse.error || !captureResponse.streamId) {
-          throw new Error(captureResponse.error || 'Failed to capture tab');
+        if (captureResponse?.error || !captureResponse?.streamId) {
+          throw new Error(captureResponse?.error || 'Failed to capture tab');
         }
 
-        // Ensure offscreen doc exists
-        await chrome.runtime.sendMessage({ type: 'START_RECORDING' });
-        // Small delay for offscreen to be ready
+        // Ensure offscreen doc is ready
+        await new Promise<void>((resolve, reject) => {
+          chrome.runtime.sendMessage({ type: 'START_RECORDING' }, (res) => {
+            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+            else resolve();
+          });
+        });
         await new Promise(r => setTimeout(r, 500));
 
         // Seek video to start
