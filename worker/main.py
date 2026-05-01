@@ -132,7 +132,7 @@ def _process_youtube(url: str, start: float, duration: float, output_path: Path)
     # Step 1: Download with cookies for auth
     dl_cmd = [
         "yt-dlp",
-        "-f", "best[height<=720]/best",
+        "-f", "b",
         "--no-warnings",
         "-o", str(raw_path),
     ]
