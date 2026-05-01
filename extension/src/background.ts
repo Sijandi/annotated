@@ -58,21 +58,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Sidebar requests recording
   if (message.type === 'START_RECORDING') {
     ensureOffscreen()
-      .then(() => chrome.storage.session.set({ audioCmd: { action: 'start', ts: Date.now() } }))
+      .then(() => chrome.storage.local.set({ audioCmd: { action: 'start', ts: Date.now() } }))
       .then(() => sendResponse({ ok: true }))
       .catch(err => sendResponse({ error: err.message }));
     return true;
   }
 
   if (message.type === 'STOP_RECORDING') {
-    chrome.storage.session.set({ audioCmd: { action: 'stop', ts: Date.now() } });
+    chrome.storage.local.set({ audioCmd: { action: 'stop', ts: Date.now() } });
     sendResponse({ ok: true });
     return false;
   }
 
   // Offscreen sends back recording data — store in session for sidebar to pick up
   if (message.type === 'AUDIO_RESULT') {
-    chrome.storage.session.set({ audioResult: { dataUrl: message.dataUrl, error: message.error } });
+    chrome.storage.local.set({ audioResult: { dataUrl: message.dataUrl, error: message.error } });
     return false;
   }
 });

@@ -49,14 +49,14 @@ export function AudioRecorder({ onRecorded, onCleared }: Props) {
       const resultPromise = new Promise<any>((resolve) => {
         const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
           if (changes.audioResult) {
-            chrome.storage.session.onChanged.removeListener(listener);
+            chrome.storage.local.onChanged.removeListener(listener);
             resolve(changes.audioResult.newValue);
-            chrome.storage.session.remove('audioResult');
+            chrome.storage.local.remove('audioResult');
           }
         };
-        chrome.storage.session.onChanged.addListener(listener);
+        chrome.storage.local.onChanged.addListener(listener);
         setTimeout(() => {
-          chrome.storage.session.onChanged.removeListener(listener);
+          chrome.storage.local.onChanged.removeListener(listener);
           resolve({ error: 'Recording timed out' });
         }, 10000);
       });

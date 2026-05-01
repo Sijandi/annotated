@@ -3,7 +3,7 @@ let mediaRecorder = null;
 let chunks = [];
 
 // Listen for commands via session storage
-chrome.storage.session.onChanged.addListener((changes) => {
+chrome.storage.local.onChanged.addListener((changes) => {
   if (!changes.audioCmd) return;
   const cmd = changes.audioCmd.newValue;
   if (!cmd) return;
