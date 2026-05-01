@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { AudioRecorder } from './AudioRecorder';
 import { Type, Mic } from 'lucide-react';
 
@@ -8,18 +8,43 @@ export interface CommentaryData {
 }
 
 interface Props {
+  clipPreviewBlob?: Blob;
+  sourceType: string;
   onReady: (data: CommentaryData) => void;
   onBack: () => void;
 }
 
-export function Commentary({ onReady, onBack }: Props) {
+export function Commentary({ clipPreviewBlob, sourceType, onReady, onBack }: Props) {
   const [tab, setTab] = useState<'text' | 'audio'>('text');
   const [text, setText] = useState('');
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const previewUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (clipPreviewBlob) {
+      previewUrlRef.current = URL.createObjectURL(clipPreviewBlob);
+    }
+    return () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
+  }, [clipPreviewBlob]);
 
   const canSubmit =
     (tab === 'text' && text.trim().length > 0) ||
     (tab === 'audio' && audioBlob !== null);
+
+  const handlePublish = () => {
+    setConfirming(true);
+  };
+
+  const confirmPublish = () => {
+    onReady(
+      tab === 'text'
+        ? { text: text.trim() }
+        : { audioBlob: audioBlob! }
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -32,6 +57,17 @@ export function Commentary({ onReady, onBack }: Props) {
         </button>
         <h3 className="text-sm font-medium text-zinc-200">Add Commentary</h3>
       </div>
+
+      {/* Clip preview */}
+      {previewUrlRef.current && sourceType === 'youtube' && (
+        <div className="rounded-lg overflow-hidden bg-black">
+          <video
+            src={previewUrlRef.current}
+            controls
+            className="w-full aspect-video"
+          />
+        </div>
+      )}
 
       <div className="flex rounded-lg bg-zinc-900 p-1">
         <button
@@ -73,27 +109,41 @@ export function Commentary({ onReady, onBack }: Props) {
         />
       )}
 
-      <div className="flex gap-3">
-        <button
-          onClick={() => onReady({})}
-          className="flex-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 px-4 py-2.5 text-sm font-medium transition text-zinc-400"
-        >
-          Skip
-        </button>
-        <button
-          onClick={() =>
-            onReady(
-              tab === 'text'
-                ? { text: text.trim() }
-                : { audioBlob: audioBlob! }
-            )
-          }
-          disabled={!canSubmit}
-          className="flex-1 rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Publish
-        </button>
-      </div>
+      {confirming ? (
+        <div className="space-y-2">
+          <p className="text-xs text-zinc-400 text-center">Publish this annotation? This will be public.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setConfirming(false)}
+              className="flex-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 px-4 py-2.5 text-sm font-medium transition text-zinc-400"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmPublish}
+              className="flex-1 rounded-lg bg-green-600 hover:bg-green-500 px-4 py-2.5 text-sm font-medium transition"
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-3">
+          <button
+            onClick={() => onReady({})}
+            className="flex-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 px-4 py-2.5 text-sm font-medium transition text-zinc-400"
+          >
+            Skip
+          </button>
+          <button
+            onClick={handlePublish}
+            disabled={!canSubmit}
+            className="flex-1 rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Publish
+          </button>
+        </div>
+      )}
     </div>
   );
 }

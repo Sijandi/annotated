@@ -214,11 +214,16 @@ export function Capture({ session }: { session: Session }) {
         {step === 'capture' && (
           <>
             {!pageContext ? (
-              <div className="text-sm text-zinc-400">Detecting page...</div>
+              <div className="flex flex-col items-center py-8 gap-3">
+                <div className="w-6 h-6 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+                <p className="text-sm text-zinc-400">Detecting page...</p>
+                <p className="text-xs text-zinc-600">Make sure you're on a YouTube video, article, or podcast page.</p>
+              </div>
             ) : pageContext.sourceType === 'unknown' ? (
-              <div className="text-sm text-zinc-400">
-                <p className="mb-2">No clippable media detected on this page.</p>
-                <p className="text-xs">Annotated supports YouTube videos, news articles, and podcasts.</p>
+              <div className="flex flex-col items-center py-8 gap-2 text-center">
+                <div className="text-3xl mb-1">🔍</div>
+                <p className="text-sm text-zinc-400">No clippable media detected.</p>
+                <p className="text-xs text-zinc-600">Navigate to a YouTube video, news article, or podcast page to get started.</p>
               </div>
             ) : (
               <div>
@@ -262,6 +267,8 @@ export function Capture({ session }: { session: Session }) {
               </div>
             )}
             <Commentary
+              clipPreviewBlob={clipState?.rawVideoBlob}
+              sourceType={clipState?.sourceType || ''}
               onReady={handlePublish}
               onBack={() => setStep('capture')}
             />
