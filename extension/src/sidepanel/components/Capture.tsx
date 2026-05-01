@@ -204,7 +204,7 @@ export function Capture({ session }: { session: Session }) {
         clip_text: clipState.clipText,
         commentary_text: commentary.text,
         commentary_audio_url: commentaryAudioUrl,
-        media_url: rawClipUrl,
+        media_url: rawClipUrl || clipState.audioSrc || null,
         status,
         slug,
       });

@@ -85,7 +85,10 @@ def process_clip(annotation_id: str, source_url: str, source_type: str, start: f
                 content_type = "video/mp4"
             elif source_type == "podcast":
                 output_path = tmppath / f"{annotation_id}.mp3"
-                _process_podcast(source_url, start, duration, output_path)
+                # Get the actual audio URL from the annotation's media_url field
+                result = sb.table("annotations").select("media_url").eq("id", annotation_id).single().execute()
+                audio_url = result.data.get("media_url") or source_url
+                _process_podcast(audio_url, start, duration, output_path)
                 storage_path = f"{annotation_id}.mp3"
                 content_type = "audio/mpeg"
             else:
