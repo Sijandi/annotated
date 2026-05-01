@@ -2,7 +2,7 @@
 Annotated transcoding worker.
 
 Receives webhook from Supabase Edge Function on new annotations,
-downloads source media, clips and downscales via ffmpeg,
+downloads source media via yt-dlp, clips and downscales via ffmpeg,
 uploads to Supabase Storage, updates the annotation row.
 
 Deploy on Railway. Required env vars:
@@ -11,11 +11,9 @@ Deploy on Railway. Required env vars:
   WORKER_SECRET         (shared with edge function)
 """
 import os
-import re
 import subprocess
 import tempfile
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
@@ -31,14 +29,6 @@ TARGET_HEIGHT = 240  # spec: 240px, must be < 480p
 
 app = FastAPI(title="annotated-worker")
 sb: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-# Invidious instances to try (public, no auth needed)
-INVIDIOUS_INSTANCES = [
-    "https://inv.nadeko.net",
-    "https://invidious.nerdvpn.de",
-    "https://invidious.jing.rocks",
-    "https://iv.nbobo.me",
-]
 
 
 class TranscodeRequest(BaseModel):
@@ -79,49 +69,6 @@ async def transcode(
         duration=duration,
     )
     return {"queued": req.annotation_id, "duration": duration}
-
-
-def _extract_video_id(url: str) -> str:
-    """Extract YouTube video ID from various URL formats."""
-    parsed = urlparse(url)
-    if "youtu.be" in parsed.hostname:
-        return parsed.path.lstrip("/")
-    qs = parse_qs(parsed.query)
-    return qs.get("v", [""])[0]
-
-
-def _get_video_stream_url(video_id: str) -> str:
-    """Get a direct video stream URL via Invidious API."""
-    for instance in INVIDIOUS_INSTANCES:
-        try:
-            resp = httpx.get(
-                f"{instance}/api/v1/videos/{video_id}",
-                params={"fields": "formatStreams,adaptiveFormats"},
-                timeout=15,
-                follow_redirects=True,
-            )
-            if resp.status_code != 200:
-                continue
-
-            data = resp.json()
-
-            # Try formatStreams first (pre-muxed, easier)
-            for stream in data.get("formatStreams", []):
-                height = int(stream.get("resolution", "0p").replace("p", "") or 0)
-                if height <= 720 and stream.get("url"):
-                    print(f"[worker] got stream from {instance}: {height}p")
-                    return stream["url"]
-
-            # Fallback: any format stream
-            streams = data.get("formatStreams", [])
-            if streams and streams[0].get("url"):
-                return streams[0]["url"]
-
-        except Exception as e:
-            print(f"[worker] invidious instance {instance} failed: {e}")
-            continue
-
-    raise RuntimeError(f"Could not get video stream for {video_id} from any Invidious instance")
 
 
 def process_clip(annotation_id: str, source_url: str, source_type: str, start: float, duration: float):
@@ -176,26 +123,34 @@ def process_clip(annotation_id: str, source_url: str, source_type: str, start: f
 
 
 def _process_youtube(url: str, start: float, duration: float, output_path: Path):
-    """Get direct stream URL via Invidious, then clip and downscale with ffmpeg."""
-    video_id = _extract_video_id(url)
-    if not video_id:
-        raise ValueError(f"Could not extract video ID from {url}")
+    """Download YouTube video via yt-dlp, then clip and downscale with ffmpeg."""
+    tmpdir = output_path.parent
+    raw_path = tmpdir / "raw_download.mp4"
 
-    stream_url = _get_video_stream_url(video_id)
+    # Step 1: Download using iOS client to bypass bot detection
+    dl_cmd = [
+        "yt-dlp",
+        "--extractor-args", "youtube:player_client=mweb",
+        "-f", "best[height<=720]/best",
+        "--no-warnings",
+        "-o", str(raw_path),
+        url,
+    ]
+    subprocess.run(dl_cmd, check=True, capture_output=True, text=True, timeout=300)
 
-    # ffmpeg can read directly from URL — clip and downscale in one pass
+    # Step 2: Clip and downscale with ffmpeg
     clip_cmd = [
         "ffmpeg",
         "-y",
         "-ss", str(start),
         "-t", str(duration),
-        "-i", stream_url,
+        "-i", str(raw_path),
         "-vf", f"scale=-2:{TARGET_HEIGHT}",
         "-c:v", "libx264", "-preset", "fast", "-crf", "28",
         "-c:a", "aac", "-b:a", "96k",
         str(output_path),
     ]
-    subprocess.run(clip_cmd, check=True, capture_output=True, text=True, timeout=300)
+    subprocess.run(clip_cmd, check=True, capture_output=True, text=True, timeout=120)
 
 
 def _process_podcast(audio_url: str, start: float, duration: float, output_path: Path):
