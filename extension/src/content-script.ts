@@ -92,6 +92,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: true });
     return false;
   }
+
+  if (message.type === 'GET_AUDIO_TIME') {
+    const audio = document.querySelector('audio');
+    sendResponse({ time: audio?.currentTime ?? null, src: audio?.src ?? null });
+    return false;
+  }
+
+  if (message.type === 'SEEK_AUDIO') {
+    const audio = document.querySelector('audio');
+    if (audio && typeof message.time === 'number') {
+      audio.currentTime = message.time;
+    }
+    sendResponse({ ok: true });
+    return false;
+  }
 });
 
 console.log('[annotated] content script loaded on', window.location.href);

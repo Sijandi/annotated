@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
-import { LogOut } from 'lucide-react';
+import { LogOut, Loader2, ExternalLink } from 'lucide-react';
+import { YouTubeClipper } from './YouTubeClipper';
+import { ArticleHighlighter } from './ArticleHighlighter';
+import { PodcastClipper } from './PodcastClipper';
+import { Commentary, type CommentaryData } from './Commentary';
 
 interface PageContext {
   url: string;
@@ -12,10 +16,41 @@ interface PageContext {
     author?: string;
     image?: string;
   };
+  audioSrc?: string;
+}
+
+interface ClipState {
+  sourceType: 'youtube' | 'article' | 'podcast';
+  sourceUrl: string;
+  sourceTitle: string;
+  sourceAuthor?: string;
+  sourceThumbnail?: string;
+  clipStart?: number;
+  clipEnd?: number;
+  clipText?: string;
+  audioSrc?: string;
+}
+
+type Step = 'capture' | 'commentary' | 'publishing' | 'done';
+
+function generateSlug(title: string): string {
+  const base = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .slice(0, 40);
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `${base}-${rand}`;
 }
 
 export function Capture({ session }: { session: Session }) {
   const [pageContext, setPageContext] = useState<PageContext | null>(null);
+  const [step, setStep] = useState<Step>('capture');
+  const [clipState, setClipState] = useState<ClipState | null>(null);
+  const [publishedSlug, setPublishedSlug] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const webAppUrl = import.meta.env.VITE_WEB_APP_URL || '';
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -34,6 +69,99 @@ export function Capture({ session }: { session: Session }) {
     await supabase.auth.signOut();
   };
 
+  const handleClipReady = (data: { start: number; end: number; audioSrc?: string }) => {
+    if (!pageContext) return;
+    setClipState({
+      sourceType: pageContext.sourceType as 'youtube' | 'podcast',
+      sourceUrl: pageContext.url,
+      sourceTitle: pageContext.title,
+      sourceAuthor: pageContext.metadata.author,
+      sourceThumbnail: pageContext.metadata.image,
+      clipStart: data.start,
+      clipEnd: data.end,
+      audioSrc: data.audioSrc,
+    });
+    setStep('commentary');
+  };
+
+  const handleTextReady = (text: string) => {
+    if (!pageContext) return;
+    setClipState({
+      sourceType: 'article',
+      sourceUrl: pageContext.url,
+      sourceTitle: pageContext.title,
+      sourceAuthor: pageContext.metadata.author,
+      sourceThumbnail: pageContext.metadata.image,
+      clipText: text,
+    });
+    setStep('commentary');
+  };
+
+  const handlePublish = async (commentary: CommentaryData) => {
+    if (!clipState) return;
+    setStep('publishing');
+    setError(null);
+
+    try {
+      const slug = generateSlug(clipState.sourceTitle);
+      let commentaryAudioUrl: string | undefined;
+
+      // Upload audio commentary if present
+      if (commentary.audioBlob) {
+        const filename = `${session.user.id}/${slug}-commentary.webm`;
+        const { error: uploadErr } = await supabase.storage
+          .from('commentary')
+          .upload(filename, commentary.audioBlob, { contentType: 'audio/webm', upsert: true });
+
+        if (uploadErr) throw uploadErr;
+
+        const { data: urlData } = supabase.storage
+          .from('commentary')
+          .getPublicUrl(filename);
+        commentaryAudioUrl = urlData.publicUrl;
+      }
+
+      // For articles, publish directly. For youtube/podcast, set to processing (worker will transcode).
+      const status = clipState.sourceType === 'article' ? 'published' : 'processing';
+
+      const { error: insertErr } = await supabase.from('annotations').insert({
+        user_id: session.user.id,
+        source_url: clipState.sourceUrl,
+        source_type: clipState.sourceType,
+        source_title: clipState.sourceTitle,
+        source_author: clipState.sourceAuthor,
+        source_thumbnail_url: clipState.sourceThumbnail,
+        clip_start_seconds: clipState.clipStart,
+        clip_end_seconds: clipState.clipEnd,
+        clip_text: clipState.clipText,
+        commentary_text: commentary.text,
+        commentary_audio_url: commentaryAudioUrl,
+        status,
+        slug,
+      });
+
+      if (insertErr) throw insertErr;
+
+      setPublishedSlug(slug);
+      setStep('done');
+
+      // Open landing page
+      if (webAppUrl) {
+        chrome.tabs.create({ url: `${webAppUrl}/a/${slug}` });
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to publish');
+      setStep('commentary');
+    }
+  };
+
+  const reset = () => {
+    setStep('capture');
+    setClipState(null);
+    setPublishedSlug(null);
+    setError(null);
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       {/* Header */}
@@ -50,32 +178,100 @@ export function Capture({ session }: { session: Session }) {
 
       {/* Body */}
       <div className="p-4">
-        {!pageContext ? (
-          <div className="text-sm text-zinc-400">Detecting page…</div>
-        ) : pageContext.sourceType === 'unknown' ? (
-          <div className="text-sm text-zinc-400">
-            <p className="mb-2">No clippable media detected on this page.</p>
-            <p className="text-xs">Annotated supports YouTube videos, news articles, and podcasts.</p>
-          </div>
-        ) : (
-          <div>
-            <div className="text-xs uppercase tracking-wide text-zinc-500 mb-1">
-              {pageContext.sourceType} detected
-            </div>
-            <h2 className="text-base font-medium text-zinc-100 line-clamp-2 mb-3">
-              {pageContext.title}
-            </h2>
+        {step === 'capture' && (
+          <>
+            {!pageContext ? (
+              <div className="text-sm text-zinc-400">Detecting page...</div>
+            ) : pageContext.sourceType === 'unknown' ? (
+              <div className="text-sm text-zinc-400">
+                <p className="mb-2">No clippable media detected on this page.</p>
+                <p className="text-xs">Annotated supports YouTube videos, news articles, and podcasts.</p>
+              </div>
+            ) : (
+              <div>
+                <div className="text-xs uppercase tracking-wide text-zinc-500 mb-1">
+                  {pageContext.sourceType} detected
+                </div>
 
-            {/* TODO Day 3: Per-source-type capture UI mounts here */}
-            <div className="rounded-lg bg-zinc-900 p-4 text-sm text-zinc-400">
-              Capture UI for <code>{pageContext.sourceType}</code> coming next.
-            </div>
+                {pageContext.sourceType === 'youtube' && (
+                  <YouTubeClipper
+                    title={pageContext.title}
+                    thumbnail={pageContext.metadata.image}
+                    onClipReady={handleClipReady}
+                  />
+                )}
+
+                {pageContext.sourceType === 'article' && (
+                  <ArticleHighlighter
+                    title={pageContext.title}
+                    author={pageContext.metadata.author}
+                    onTextReady={handleTextReady}
+                  />
+                )}
+
+                {pageContext.sourceType === 'podcast' && (
+                  <PodcastClipper
+                    title={pageContext.title}
+                    audioSrc={pageContext.audioSrc}
+                    onClipReady={handleClipReady}
+                  />
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {step === 'commentary' && (
+          <>
+            {error && (
+              <div className="mb-3 text-sm text-red-400 bg-red-400/10 rounded-lg px-3 py-2">
+                {error}
+              </div>
+            )}
+            <Commentary
+              onReady={handlePublish}
+              onBack={() => setStep('capture')}
+            />
+          </>
+        )}
+
+        {step === 'publishing' && (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+            <p className="text-sm text-zinc-400">Publishing your annotation...</p>
+          </div>
+        )}
+
+        {step === 'done' && publishedSlug && (
+          <div className="flex flex-col items-center justify-center py-12 gap-4">
+            <div className="text-2xl">✓</div>
+            <p className="text-sm text-zinc-200 font-medium">Published!</p>
+            {clipState?.sourceType !== 'article' && (
+              <p className="text-xs text-zinc-500 text-center">
+                Your clip is being processed. The landing page will update when it's ready.
+              </p>
+            )}
+            {webAppUrl && (
+              <button
+                onClick={() => chrome.tabs.create({ url: `${webAppUrl}/a/${publishedSlug}` })}
+                className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition"
+              >
+                <ExternalLink className="w-4 h-4" />
+                View annotation
+              </button>
+            )}
+            <button
+              onClick={reset}
+              className="text-sm text-zinc-500 hover:text-zinc-300 transition"
+            >
+              Create another
+            </button>
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="absolute bottom-0 left-0 right-0 px-4 py-2 border-t border-zinc-800 text-xs text-zinc-500">
+      <div className="fixed bottom-0 left-0 right-0 px-4 py-2 border-t border-zinc-800 bg-zinc-950 text-xs text-zinc-500">
         {session.user.email ?? session.user.user_metadata?.user_name ?? 'Signed in'}
       </div>
     </div>
