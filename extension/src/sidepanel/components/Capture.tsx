@@ -121,7 +121,7 @@ export function Capture({ session }: { session: Session }) {
     const slug = generateSlug(clipState.sourceTitle);
     let rawVideoBlob = clipState.rawVideoBlob;
 
-    // For YouTube: capture the clip now via tabCapture
+    // For YouTube: capture the clip via content script canvas recording
     if (clipState.sourceType === 'youtube' && !rawVideoBlob && clipState.clipStart != null && clipState.clipEnd != null) {
       setStep('recording');
       try {
@@ -130,74 +130,24 @@ export function Capture({ session }: { session: Session }) {
         });
         if (!tab?.id) throw new Error('No active tab');
 
-        const clipDuration = clipState.clipEnd! - clipState.clipStart!;
-
-        // Get tab capture stream ID
-        const captureResponse = await new Promise<{ streamId?: string; error?: string }>((resolve, reject) => {
-          chrome.runtime.sendMessage({ type: 'CAPTURE_TAB', tabId: tab.id }, (res) => {
+        const response = await new Promise<{ dataUrl?: string; error?: string }>((resolve, reject) => {
+          chrome.tabs.sendMessage(tab.id!, {
+            type: 'CAPTURE_VIDEO_CLIP',
+            start: clipState.clipStart,
+            end: clipState.clipEnd,
+          }, (res) => {
             if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
+              reject(new Error(chrome.runtime.lastError.message || 'Content script not responding'));
               return;
             }
-            resolve(res || { error: 'No response from background' });
+            resolve(res || {});
           });
         });
-        if (captureResponse?.error || !captureResponse?.streamId) {
-          throw new Error(captureResponse?.error || 'Failed to capture tab');
-        }
 
-        // Ensure offscreen doc exists
-        await new Promise<void>((resolve) => {
-          chrome.runtime.sendMessage({ type: 'ENSURE_OFFSCREEN' }, () => resolve());
-        });
-        await new Promise(r => setTimeout(r, 300));
+        if (response?.error) throw new Error(response.error);
+        if (!response?.dataUrl) throw new Error('No video data captured. Try refreshing the page.');
 
-        // Seek video to start
-        await new Promise<void>((resolve) => {
-          chrome.tabs.sendMessage(tab.id!, { type: 'SEEK_VIDEO', time: clipState.clipStart }, () => resolve());
-        });
-        await new Promise(r => setTimeout(r, 800));
-
-        // Set up result listener BEFORE starting capture
-        const resultPromise = new Promise<any>((resolve) => {
-          const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-            if (changes.captureResult?.newValue) {
-              chrome.storage.local.onChanged.removeListener(listener);
-              chrome.storage.local.remove('captureResult');
-              resolve(changes.captureResult.newValue);
-            }
-          };
-          chrome.storage.local.onChanged.addListener(listener);
-          setTimeout(() => {
-            chrome.storage.local.onChanged.removeListener(listener);
-            resolve({ error: 'Capture timed out' });
-          }, (clipDuration + 15) * 1000);
-        });
-
-        // Start tab capture recording in offscreen
-        chrome.storage.local.set({
-          captureCmd: { action: 'start', streamId: captureResponse.streamId, duration: clipDuration }
-        });
-
-        // Play the video
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id! },
-          func: () => { document.querySelector('video')?.play(); },
-        });
-
-        // Wait for capture result
-        const result = await resultPromise;
-
-        // Pause video
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id! },
-          func: () => { document.querySelector('video')?.pause(); },
-        });
-
-        if (result?.error) throw new Error(result.error);
-        if (!result?.dataUrl) throw new Error('No video data captured');
-
-        const res = await fetch(result.dataUrl);
+        const res = await fetch(response.dataUrl);
         rawVideoBlob = await res.blob();
       } catch (err: any) {
         console.error('[annotated] capture failed:', err);
