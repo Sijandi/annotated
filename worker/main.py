@@ -121,20 +121,33 @@ def process_clip(annotation_id: str, source_url: str, source_type: str, start: f
 
 
 def _process_youtube(url: str, start: float, duration: float, output_path: Path):
-    """Download YouTube clip and downscale to 240p in one yt-dlp invocation."""
-    end = start + duration
-    cmd = [
+    """Download YouTube video, then clip and downscale to 240p with ffmpeg."""
+    tmpdir = output_path.parent
+    raw_path = tmpdir / "raw_download.mp4"
+
+    # Step 1: Download the full video at low quality
+    dl_cmd = [
         "yt-dlp",
-        "--download-sections", f"*{start}-{end}",
-        "--force-keyframes-at-cuts",
         "-f", "bv*[height<=480]+ba/b[height<=480]/b",
-        "--postprocessor-args",
-        f"ffmpeg:-vf scale=-2:{TARGET_HEIGHT} -c:v libx264 -preset fast -crf 28 -c:a aac -b:a 96k",
         "--merge-output-format", "mp4",
-        "-o", str(output_path),
+        "-o", str(raw_path),
         url,
     ]
-    subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
+    subprocess.run(dl_cmd, check=True, capture_output=True, text=True, timeout=300)
+
+    # Step 2: Clip and downscale with ffmpeg
+    clip_cmd = [
+        "ffmpeg",
+        "-y",
+        "-ss", str(start),
+        "-t", str(duration),
+        "-i", str(raw_path),
+        "-vf", f"scale=-2:{TARGET_HEIGHT}",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "28",
+        "-c:a", "aac", "-b:a", "96k",
+        str(output_path),
+    ]
+    subprocess.run(clip_cmd, check=True, capture_output=True, text=True, timeout=120)
 
 
 def _process_podcast(audio_url: str, start: float, duration: float, output_path: Path):
