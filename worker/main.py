@@ -10,6 +10,7 @@ Deploy on Railway. Required env vars:
   SUPABASE_SERVICE_KEY  (service role, bypasses RLS)
   WORKER_SECRET         (shared with edge function)
 """
+import base64
 import os
 import subprocess
 import tempfile
@@ -23,6 +24,7 @@ from supabase import Client, create_client
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 WORKER_SECRET = os.environ["WORKER_SECRET"]
+YT_COOKIES_B64 = os.environ.get("YT_COOKIES_B64", "")
 
 MAX_CLIP_SECONDS = 90
 TARGET_HEIGHT = 240  # spec: 240px, must be < 480p
@@ -127,15 +129,22 @@ def _process_youtube(url: str, start: float, duration: float, output_path: Path)
     tmpdir = output_path.parent
     raw_path = tmpdir / "raw_download.mp4"
 
-    # Step 1: Download using iOS client to bypass bot detection
+    # Step 1: Download with cookies for auth
     dl_cmd = [
         "yt-dlp",
-        "--extractor-args", "youtube:player_client=mweb",
         "-f", "best[height<=720]/best",
         "--no-warnings",
         "-o", str(raw_path),
-        url,
     ]
+
+    # Write cookies file if available
+    cookies_path = None
+    if YT_COOKIES_B64:
+        cookies_path = tmpdir / "cookies.txt"
+        cookies_path.write_bytes(base64.b64decode(YT_COOKIES_B64))
+        dl_cmd.extend(["--cookies", str(cookies_path)])
+
+    dl_cmd.append(url)
     subprocess.run(dl_cmd, check=True, capture_output=True, text=True, timeout=300)
 
     # Step 2: Clip and downscale with ffmpeg
