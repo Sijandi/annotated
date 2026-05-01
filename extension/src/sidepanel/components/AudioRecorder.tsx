@@ -27,18 +27,7 @@ export function AudioRecorder({ onRecorded, onCleared }: Props) {
   const startRecording = async () => {
     setError(null);
     try {
-      // Create offscreen document for mic access
-      try {
-        await chrome.offscreen.createDocument({
-          url: 'offscreen.html',
-          reasons: [chrome.offscreen.Reason.USER_MEDIA],
-          justification: 'Recording audio commentary',
-        });
-      } catch {
-        // Document may already exist
-      }
-
-      const response = await chrome.runtime.sendMessage({ type: 'OFFSCREEN_START_RECORDING' });
+      const response = await chrome.runtime.sendMessage({ type: 'START_RECORDING' });
       if (response?.error) throw new Error(response.error);
 
       setState('recording');
@@ -56,8 +45,9 @@ export function AudioRecorder({ onRecorded, onCleared }: Props) {
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP_RECORDING' });
+      const response = await chrome.runtime.sendMessage({ type: 'STOP_RECORDING' });
       if (response?.error) throw new Error(response.error);
+      if (!response?.dataUrl) throw new Error('No audio data received');
 
       // Convert data URL to blob
       const res = await fetch(response.dataUrl);
@@ -66,9 +56,6 @@ export function AudioRecorder({ onRecorded, onCleared }: Props) {
       audioUrlRef.current = URL.createObjectURL(blob);
       onRecorded(blob);
       setState('recorded');
-
-      // Clean up offscreen document
-      try { await chrome.offscreen.closeDocument(); } catch {}
     } catch (err: any) {
       console.error('[annotated] stop recording error:', err);
       setError(err.message || 'Failed to stop recording');

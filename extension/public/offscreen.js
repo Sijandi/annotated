@@ -1,56 +1,62 @@
 // Offscreen document for audio recording
-// Chrome doesn't allow getUserMedia in side panels, so we record here
+// Communicates with background via chrome.storage changes
 
 let mediaRecorder = null;
 let chunks = [];
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'OFFSCREEN_START_RECORDING') {
-    startRecording()
-      .then(() => sendResponse({ ok: true }))
-      .catch(err => sendResponse({ error: err.message }));
-    return true;
-  }
+// Listen for commands via storage changes
+chrome.storage.local.onChanged.addListener((changes) => {
+  if (!changes.audioCommand) return;
+  const command = changes.audioCommand.newValue;
 
-  if (message.type === 'OFFSCREEN_STOP_RECORDING') {
-    stopRecording()
-      .then(dataUrl => sendResponse({ dataUrl }))
-      .catch(err => sendResponse({ error: err.message }));
-    return true;
+  if (command === 'start') {
+    startRecording();
+    chrome.storage.local.remove('audioCommand');
+  } else if (command === 'stop') {
+    stopRecording();
+    chrome.storage.local.remove('audioCommand');
   }
 });
 
 async function startRecording() {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-  chunks = [];
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+    chunks = [];
 
-  mediaRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0) chunks.push(e.data);
-  };
-
-  mediaRecorder.start(100);
-}
-
-async function stopRecording() {
-  return new Promise((resolve, reject) => {
-    if (!mediaRecorder) {
-      reject(new Error('No active recording'));
-      return;
-    }
-
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(chunks, { type: 'audio/webm' });
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error('Failed to read blob'));
-      reader.readAsDataURL(blob);
-
-      mediaRecorder.stream.getTracks().forEach(t => t.stop());
-      mediaRecorder = null;
-      chunks = [];
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
     };
 
-    mediaRecorder.stop();
-  });
+    mediaRecorder.start(100);
+    console.log('[offscreen] recording started');
+  } catch (err) {
+    console.error('[offscreen] mic error:', err);
+    chrome.runtime.sendMessage({ type: 'RECORDING_RESULT', error: err.message });
+  }
+}
+
+function stopRecording() {
+  if (!mediaRecorder) {
+    chrome.runtime.sendMessage({ type: 'RECORDING_RESULT', error: 'No active recording' });
+    return;
+  }
+
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      chrome.runtime.sendMessage({ type: 'RECORDING_RESULT', dataUrl: reader.result });
+    };
+    reader.onerror = () => {
+      chrome.runtime.sendMessage({ type: 'RECORDING_RESULT', error: 'Failed to read audio' });
+    };
+    reader.readAsDataURL(blob);
+
+    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+    mediaRecorder = null;
+    chunks = [];
+  };
+
+  mediaRecorder.stop();
 }
