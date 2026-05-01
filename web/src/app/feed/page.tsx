@@ -1,21 +1,39 @@
-import { createServerSupabase } from "@/lib/supabase-server";
+import { createClient } from "@supabase/supabase-js";
 import { SourceBadge } from "@/components/SourceBadge";
 import { timeAgo } from "@/components/TimeAgo";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+
 export default async function FeedPage() {
-  const supabase = await createServerSupabase();
+  const supabase = getSupabase();
 
   const { data: annotations } = await supabase
     .from("annotations")
-    .select(
-      "id, slug, source_type, source_title, source_url, source_thumbnail_url, commentary_text, created_at, profiles(username, display_name, avatar_url)"
-    )
+    .select("id, slug, source_type, source_title, source_url, source_thumbnail_url, commentary_text, created_at, user_id")
     .eq("status", "published")
     .order("created_at", { ascending: false })
     .limit(50);
+
+  // Fetch profiles for all unique user_ids
+  const userIds = [...new Set((annotations ?? []).map((a) => a.user_id))];
+  const { data: profiles } = userIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, username, display_name, avatar_url")
+        .in("id", userIds)
+    : { data: [] };
+
+  const profileMap = new Map(
+    (profiles ?? []).map((p) => [p.id, p])
+  );
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
@@ -31,11 +49,7 @@ export default async function FeedPage() {
       ) : (
         <div className="space-y-4">
           {annotations.map((a) => {
-            const profile = a.profiles as unknown as {
-              username: string;
-              display_name: string | null;
-              avatar_url: string | null;
-            };
+            const profile = profileMap.get(a.user_id);
 
             return (
               <Link
@@ -45,7 +59,7 @@ export default async function FeedPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {profile.avatar_url ? (
+                    {profile?.avatar_url ? (
                       <img
                         src={profile.avatar_url}
                         alt=""
@@ -56,7 +70,7 @@ export default async function FeedPage() {
                     )}
                     <div>
                       <span className="text-sm font-medium">
-                        {profile.display_name || profile.username}
+                        {profile?.display_name || profile?.username || "Unknown"}
                       </span>
                       <span className="text-xs text-zinc-600 ml-2">
                         {timeAgo(a.created_at)}

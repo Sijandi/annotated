@@ -1,33 +1,51 @@
 import { notFound } from "next/navigation";
-import { createServerSupabase } from "@/lib/supabase-server";
+import { createClient } from "@supabase/supabase-js";
 import { SourceBadge } from "@/components/SourceBadge";
 import { ClaimForm } from "@/components/ClaimForm";
 import { CommentSection } from "@/components/CommentSection";
-import { timeAgo } from "@/components/TimeAgo";
 
-export default async function AnnotationPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = await params;
-  const supabase = await createServerSupabase();
+export const dynamic = "force-dynamic";
 
-  const { data: annotation } = await supabase
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+
+function formatTimeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+export default async function AnnotationPage(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const { slug } = await props.params;
+  const supabase = getSupabase();
+
+  const { data: annotation, error } = await supabase
     .from("annotations")
-    .select(
-      "*, profiles(username, display_name, avatar_url)"
-    )
+    .select("*")
     .eq("slug", slug)
     .single();
 
-  if (!annotation) notFound();
+  if (error || !annotation) notFound();
 
-  const profile = annotation.profiles as {
-    username: string;
-    display_name: string | null;
-    avatar_url: string | null;
-  };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("username, display_name, avatar_url")
+    .eq("id", annotation.user_id)
+    .single();
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 space-y-8">
@@ -55,7 +73,6 @@ export default async function AnnotationPage({
       {/* Published state */}
       {annotation.status === "published" && (
         <>
-          {/* Media player */}
           {annotation.source_type === "youtube" && annotation.media_url && (
             <div className="rounded-xl overflow-hidden bg-black">
               <video
@@ -97,7 +114,7 @@ export default async function AnnotationPage({
 
       {/* Author */}
       <div className="flex items-center gap-3">
-        {profile.avatar_url ? (
+        {profile?.avatar_url ? (
           <img
             src={profile.avatar_url}
             alt=""
@@ -108,10 +125,11 @@ export default async function AnnotationPage({
         )}
         <div>
           <p className="text-sm font-medium">
-            {profile.display_name || profile.username}
+            {profile?.display_name || profile?.username || "Unknown"}
           </p>
           <p className="text-xs text-zinc-500">
-            @{profile.username} · {timeAgo(annotation.created_at)}
+            {profile?.username ? `@${profile.username} · ` : ""}
+            {formatTimeAgo(annotation.created_at)}
           </p>
         </div>
       </div>
@@ -142,7 +160,7 @@ export default async function AnnotationPage({
         <CommentSection annotationId={annotation.id} />
       </div>
 
-      {/* Claim button — always present */}
+      {/* Claim button */}
       <ClaimForm annotationId={annotation.id} />
     </div>
   );
