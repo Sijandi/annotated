@@ -47,8 +47,18 @@ export function FollowButton({ targetUserId }: { targetUserId: string }) {
     setLoading(false);
   };
 
-  // Don't show for own profile or if not logged in
-  if (!userId || userId === targetUserId || loading) return null;
+  // Don't show for own profile
+  if (userId === targetUserId) return null;
+  if (loading) return null;
+
+  // Not logged in — show prompt
+  if (!userId) {
+    return (
+      <span className="text-xs text-zinc-600">
+        Sign in via extension to follow
+      </span>
+    );
+  }
 
   return (
     <button
