@@ -8,31 +8,41 @@ export default function Home() {
           Annotated
         </h1>
         <p className="text-xl text-zinc-400 max-w-lg mx-auto">
-          Clip and annotate media from anywhere on the web. Share your takes. Join the conversation.
+          Clip any moment from YouTube, articles, or podcasts. Add your take. Every annotation gets its own shareable page — always linked to the source.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left max-w-lg mx-auto">
           <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
             <div className="text-2xl mb-2">✂️</div>
-            <h3 className="text-sm font-medium mb-1">Clip Media</h3>
+            <h3 className="text-sm font-medium mb-1">Clip in the Sidebar</h3>
             <p className="text-xs text-zinc-500">
-              YouTube, articles, podcasts. Up to 90 seconds, fair-use friendly.
+              Set start and end on any video or highlight text. Max 90 seconds, downscaled to 240p. Fair-use first.
             </p>
           </div>
           <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
             <div className="text-2xl mb-2">🎙️</div>
-            <h3 className="text-sm font-medium mb-1">Add Commentary</h3>
+            <h3 className="text-sm font-medium mb-1">Record Your Take</h3>
             <p className="text-xs text-zinc-500">
-              Text or recorded audio. Your take on what matters.
+              Text or audio commentary. React to what you clipped, in your own voice or words.
             </p>
           </div>
           <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-            <div className="text-2xl mb-2">🌐</div>
-            <h3 className="text-sm font-medium mb-1">Share & Discuss</h3>
+            <div className="text-2xl mb-2">🔗</div>
+            <h3 className="text-sm font-medium mb-1">Share & Source</h3>
             <p className="text-xs text-zinc-500">
-              Public feed. Follow annotators. Comment on theirs.
+              Every clip links back to the original. Public feed. Follow people. File a claim if it's yours.
             </p>
           </div>
+        </div>
+
+        <div className="rounded-xl bg-zinc-900/50 border border-zinc-800 p-6 max-w-lg mx-auto text-left space-y-3">
+          <p className="text-xs uppercase tracking-wide text-zinc-500">How it works</p>
+          <ol className="text-sm text-zinc-400 space-y-2">
+            <li className="flex gap-3"><span className="text-zinc-600 font-mono">1.</span> Install the Chrome extension and sign in with X or Google</li>
+            <li className="flex gap-3"><span className="text-zinc-600 font-mono">2.</span> Open the sidebar on any page — it detects what's clippable</li>
+            <li className="flex gap-3"><span className="text-zinc-600 font-mono">3.</span> Set your clip, add commentary, hit publish</li>
+            <li className="flex gap-3"><span className="text-zinc-600 font-mono">4.</span> Your annotation gets a landing page — share it anywhere</li>
+          </ol>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -51,6 +61,10 @@ export default function Home() {
             Browse the feed →
           </Link>
         </div>
+
+        <p className="text-xs text-zinc-600">
+          Built for the <a href="https://annotated.lovable.app/" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-zinc-300 transition">$5K J-Cal bounty</a>. Open source on GitHub.
+        </p>
       </div>
     </div>
   );
