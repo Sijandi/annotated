@@ -54,9 +54,11 @@ function getMetadata(): PageContext['metadata'] {
 
 function getPageContext(): PageContext {
   const sourceType = detectSourceType();
+  // Strip tab count prefix like "(111) " from title
+  const title = document.title.replace(/^\(\d+\)\s*/, '');
   const ctx: PageContext = {
     url: window.location.href,
-    title: document.title,
+    title,
     sourceType,
     metadata: getMetadata(),
   };
