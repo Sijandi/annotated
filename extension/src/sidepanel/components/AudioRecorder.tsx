@@ -10,106 +10,70 @@ export function AudioRecorder({ onRecorded, onCleared }: Props) {
   const [state, setState] = useState<'idle' | 'recording' | 'recorded'>('idle');
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number>(0);
   const audioUrlRef = useRef<string | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animFrameRef = useRef<number>(0);
 
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
     audioUrlRef.current = null;
   }, []);
 
   useEffect(() => cleanup, [cleanup]);
 
-  const drawWaveform = useCallback(() => {
-    const analyser = analyserRef.current;
-    const canvas = canvasRef.current;
-    if (!analyser || !canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const bufLen = analyser.frequencyBinCount;
-    const data = new Uint8Array(bufLen);
-
-    const draw = () => {
-      animFrameRef.current = requestAnimationFrame(draw);
-      analyser.getByteTimeDomainData(data);
-
-      ctx.fillStyle = '#18181b';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#ef4444';
-      ctx.beginPath();
-
-      const sliceWidth = canvas.width / bufLen;
-      let x = 0;
-      for (let i = 0; i < bufLen; i++) {
-        const v = data[i] / 128.0;
-        const y = (v * canvas.height) / 2;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-        x += sliceWidth;
-      }
-      ctx.lineTo(canvas.width, canvas.height / 2);
-      ctx.stroke();
-    };
-    draw();
-  }, []);
-
   const startRecording = async () => {
+    setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const audioCtx = new AudioContext();
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;
-      source.connect(analyser);
-      analyserRef.current = analyser;
+      // Create offscreen document for mic access
+      try {
+        await chrome.offscreen.createDocument({
+          url: 'offscreen.html',
+          reasons: [chrome.offscreen.Reason.USER_MEDIA],
+          justification: 'Recording audio commentary',
+        });
+      } catch {
+        // Document may already exist
+      }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
+      const response = await chrome.runtime.sendMessage({ type: 'OFFSCREEN_START_RECORDING' });
+      if (response?.error) throw new Error(response.error);
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
-      mediaRecorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        audioCtx.close();
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        audioUrlRef.current = URL.createObjectURL(blob);
-        onRecorded(blob);
-        setState('recorded');
-        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      };
-
-      mediaRecorder.start(100);
       setState('recording');
       setDuration(0);
-
       timerRef.current = window.setInterval(() => {
         setDuration((d) => d + 1);
       }, 1000);
-
-      drawWaveform();
-    } catch {
-      console.error('Microphone access denied');
+    } catch (err: any) {
+      console.error('[annotated] recording error:', err);
+      setError(err.message || 'Failed to start recording');
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
-    mediaRecorderRef.current?.stop();
+
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP_RECORDING' });
+      if (response?.error) throw new Error(response.error);
+
+      // Convert data URL to blob
+      const res = await fetch(response.dataUrl);
+      const blob = await res.blob();
+
+      audioUrlRef.current = URL.createObjectURL(blob);
+      onRecorded(blob);
+      setState('recorded');
+
+      // Clean up offscreen document
+      try { await chrome.offscreen.closeDocument(); } catch {}
+    } catch (err: any) {
+      console.error('[annotated] stop recording error:', err);
+      setError(err.message || 'Failed to stop recording');
+      setState('idle');
+    }
   };
 
   const togglePlayback = () => {
@@ -143,6 +107,10 @@ export function AudioRecorder({ onRecorded, onCleared }: Props) {
 
   return (
     <div className="space-y-3">
+      {error && (
+        <p className="text-xs text-red-400">{error}</p>
+      )}
+
       {state === 'idle' && (
         <button
           onClick={startRecording}
@@ -162,13 +130,6 @@ export function AudioRecorder({ onRecorded, onCleared }: Props) {
             </span>
             <span className="text-sm text-red-400 font-mono">{formatDur(duration)}</span>
           </div>
-
-          <canvas
-            ref={canvasRef}
-            width={280}
-            height={60}
-            className="w-full rounded-lg"
-          />
 
           <button
             onClick={stopRecording}

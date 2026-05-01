@@ -9,7 +9,8 @@
     "scripting",
     "storage",
     "identity",
-    "tabs"
+    "tabs",
+    "offscreen"
   ],
   "host_permissions": [
     "https://*.supabase.co/*",

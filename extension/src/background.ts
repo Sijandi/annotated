@@ -6,8 +6,10 @@ chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error('[annotated] sidePanel setup failed:', error));
 
-// Listen for messages from content scripts (e.g. selection events, player time updates)
+// Listen for messages from content scripts and sidebar
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Offscreen messages — handled by offscreen.ts
+  if (message.type?.startsWith('OFFSCREEN_')) return false;
   if (message.type === 'GET_ACTIVE_TAB') {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
       sendResponse({ tab });
