@@ -161,6 +161,71 @@ async function captureVideoClip(startTime: number, endTime: number): Promise<str
   });
 }
 
+// Persistent recorder for start/stop capture flow
+let activeRecorder: MediaRecorder | null = null;
+let activeChunks: Blob[] = [];
+
+function startContinuousCapture(): string | null {
+  const video = document.querySelector('video');
+  if (!video) return 'No video element found';
+
+  let stream: MediaStream;
+  try {
+    stream = (video as any).captureStream(30);
+  } catch {
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    stream = canvas.captureStream(30);
+    const ctx = canvas.getContext('2d')!;
+    const draw = () => {
+      if (video.paused || video.ended) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      requestAnimationFrame(draw);
+    };
+    video.addEventListener('play', draw, { once: false });
+    draw();
+  }
+
+  activeRecorder = new MediaRecorder(stream, {
+    mimeType: 'video/webm;codecs=vp8,opus',
+    videoBitsPerSecond: 2_000_000,
+  });
+  activeChunks = [];
+  activeRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) activeChunks.push(e.data);
+  };
+  activeRecorder.start(100);
+
+  // Safety: auto-stop after 95 seconds
+  setTimeout(() => {
+    if (activeRecorder?.state === 'recording') activeRecorder.stop();
+  }, 95_000);
+
+  return null;
+}
+
+function stopContinuousCapture(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!activeRecorder || activeRecorder.state === 'inactive') {
+      reject(new Error('No active recording'));
+      return;
+    }
+
+    activeRecorder.onstop = () => {
+      const blob = new Blob(activeChunks, { type: 'video/webm' });
+      activeChunks = [];
+      activeRecorder = null;
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read blob'));
+      reader.readAsDataURL(blob);
+    };
+
+    activeRecorder.stop();
+  });
+}
+
 // Handle messages from sidebar
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'GET_PAGE_CONTEXT') {
@@ -208,7 +273,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     captureVideoClip(message.start, message.end)
       .then(dataUrl => sendResponse({ dataUrl }))
       .catch(err => sendResponse({ error: err.message }));
-    return true; // async response
+    return true;
+  }
+
+  if (message.type === 'START_CAPTURE') {
+    const err = startContinuousCapture();
+    sendResponse(err ? { error: err } : { ok: true });
+    return false;
+  }
+
+  if (message.type === 'STOP_CAPTURE') {
+    stopContinuousCapture()
+      .then(dataUrl => sendResponse({ dataUrl }))
+      .catch(err => sendResponse({ error: err.message }));
+    return true;
   }
 });
 

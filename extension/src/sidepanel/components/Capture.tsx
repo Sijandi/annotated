@@ -70,11 +70,10 @@ export function Capture({ session }: { session: Session }) {
     await supabase.auth.signOut();
   };
 
-  const handleClipReady = async (data: { start: number; end: number; audioSrc?: string }) => {
+  const handleClipReady = async (data: { start: number; end: number; audioSrc?: string; videoBlob?: Blob }) => {
     if (!pageContext) return;
 
     if (pageContext.sourceType === 'youtube') {
-      // Just save clip times, capture happens at publish
       setClipState({
         sourceType: 'youtube',
         sourceUrl: pageContext.url,
@@ -83,6 +82,7 @@ export function Capture({ session }: { session: Session }) {
         sourceThumbnail: pageContext.metadata.image,
         clipStart: data.start,
         clipEnd: data.end,
+        rawVideoBlob: data.videoBlob,
       });
       setStep('commentary');
     } else {

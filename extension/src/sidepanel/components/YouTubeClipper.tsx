@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Clock, Play, Square, AlertCircle } from 'lucide-react';
 
 interface ClipData {
   start: number;
   end: number;
+  videoBlob?: Blob;
 }
 
 interface Props {
@@ -30,10 +31,45 @@ function getVideoTime(): Promise<number | null> {
   });
 }
 
+function startCapture(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+      if (!tab?.id) return reject(new Error('No active tab'));
+      chrome.tabs.sendMessage(tab.id, { type: 'START_CAPTURE' }, (res) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (res?.error) return reject(new Error(res.error));
+        resolve();
+      });
+    });
+  });
+}
+
+function stopCapture(): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+      if (!tab?.id) return reject(new Error('No active tab'));
+      chrome.tabs.sendMessage(tab.id, { type: 'STOP_CAPTURE' }, async (res) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (res?.error) return reject(new Error(res.error));
+        if (!res?.dataUrl) return reject(new Error('No video data'));
+        try {
+          const r = await fetch(res.dataUrl);
+          const blob = await r.blob();
+          resolve(blob);
+        } catch (e: any) {
+          reject(e);
+        }
+      });
+    });
+  });
+}
+
 export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
   const [start, setStart] = useState<number | null>(null);
   const [end, setEnd] = useState<number | null>(null);
+  const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const blobRef = useRef<Blob | null>(null);
 
   const duration = start !== null && end !== null ? end - start : null;
   const isValid = duration !== null && duration > 0 && duration <= 90;
@@ -47,7 +83,16 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
     }
     setError(null);
     setStart(time);
-    if (end !== null && end <= time) setEnd(null);
+    setEnd(null);
+    blobRef.current = null;
+
+    // Start recording in the content script
+    try {
+      await startCapture();
+      setRecording(true);
+    } catch (err: any) {
+      setError(err.message || 'Failed to start recording');
+    }
   };
 
   const handleSetEnd = async () => {
@@ -59,6 +104,9 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
     setError(null);
     if (start !== null && time - start > 90) {
       setError('Clip cannot exceed 90 seconds. Move the video closer to your start point.');
+      // Stop recording anyway
+      try { await stopCapture(); } catch {}
+      setRecording(false);
       return;
     }
     if (start !== null && time <= start) {
@@ -66,6 +114,18 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
       return;
     }
     setEnd(time);
+
+    // Stop recording and get the blob
+    if (recording) {
+      try {
+        const blob = await stopCapture();
+        blobRef.current = blob;
+        setRecording(false);
+      } catch (err: any) {
+        setError(err.message || 'Failed to stop recording');
+        setRecording(false);
+      }
+    }
   };
 
   return (
@@ -81,16 +141,27 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
           className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-2.5 text-sm font-medium transition"
         >
           <Play className="w-4 h-4 text-green-400" />
-          Set start
+          {recording ? 'Restart' : 'Set start'}
         </button>
         <button
           onClick={handleSetEnd}
-          className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-2.5 text-sm font-medium transition"
+          disabled={start === null}
+          className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-2.5 text-sm font-medium transition disabled:opacity-40"
         >
           <Square className="w-4 h-4 text-red-400" />
           Set end
         </button>
       </div>
+
+      {recording && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+          </span>
+          <span className="text-red-400">Recording clip...</span>
+        </div>
+      )}
 
       <div className="rounded-lg bg-zinc-900 p-3 space-y-2">
         <div className="flex justify-between text-sm">
@@ -129,9 +200,9 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
         </div>
       )}
 
-      {isValid && (
+      {isValid && blobRef.current && (
         <button
-          onClick={() => onClipReady({ start: start!, end: end! })}
+          onClick={() => onClipReady({ start: start!, end: end!, videoBlob: blobRef.current! })}
           className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-medium transition"
         >
           Next: Add Commentary
