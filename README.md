@@ -2,56 +2,84 @@
 
 A Chrome sidebar extension for clipping and annotating media (YouTube, news articles, podcasts) with a public social feed. Built for the [$5K J-Cal bounty](https://annotated.lovable.app/).
 
-## What this is
+**Live:** [annotated-app.vercel.app](https://annotated-app.vercel.app)
 
-Three-tier app:
+## What it does
 
-1. **Chrome sidebar extension** (`extension/`) — capture surface. Manifest V3, `sidePanel` API, React + Vite.
-2. **Web app** (`web/`) — public landing pages, social feed, file-a-claim flow. Built in Lovable, exported here.
-3. **Backend** (`supabase/`, `worker/`) — Supabase for auth/Postgres/storage. A separate Python worker on Railway runs `yt-dlp` + `ffmpeg` for video transcoding, since Supabase Edge Functions can't shell out to system binaries.
+1. Open the Chrome sidebar on any YouTube video, news article, or podcast page
+2. Set start/end to clip a video segment (max 90s), or highlight text from an article
+3. Add text or recorded audio commentary
+4. Publish — generates a shareable landing page with the clip, your commentary, source link, and a fair-use claim button
+5. Browse the public feed, follow other annotators, comment on clips
 
-## Submission target
+## Architecture
 
-- Live extension (loaded unpacked + GitHub link)
-- Live web app URL
-- 90-second demo video (see `docs/storyboard.md`)
-- Submitted to https://annotated.lovable.app/enter
+```
+┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
+│  Chrome Ext     │    │  Web App     │    │  Worker         │
+│  (sidebar)      │    │  (Next.js)   │    │  (Railway)      │
+│                 │    │              │    │                 │
+│  Capture UI     │    │  Landing pgs │    │  ffmpeg         │
+│  Clip start/end │    │  Social feed │    │  Downscale 240p │
+│  Audio recorder │    │  Comments    │    │                 │
+│  OAuth          │    │  Claim form  │    │                 │
+└────────┬────────┘    └──────┬───────┘    └────────┬────────┘
+         │                    │                     │
+         └────────────┬───────┴─────────────────────┘
+                      │
+              ┌───────▼────────┐
+              │  Supabase      │
+              │  Auth (X+Goog) │
+              │  Postgres      │
+              │  Storage       │
+              │  Edge Function │
+              └────────────────┘
+```
+
+## Install the extension
+
+```bash
+git clone https://github.com/Sijandi/annotated.git
+cd annotated/extension
+npm install
+npm run build
+```
+
+Then in Chrome:
+1. Go to `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked** → select the `extension/dist` folder
+4. Click the Annotated icon → sidebar opens
+
+## Tech stack
+
+- **Extension:** React, Vite, Tailwind, Manifest V3 sidePanel API, `captureStream` for video+audio capture
+- **Web app:** Next.js 16, Tailwind, Supabase SSR
+- **Backend:** Supabase (Auth, Postgres, Storage, Edge Functions), Railway (Python + ffmpeg worker)
+- **Auth:** OAuth via X (Twitter) and Google
 
 ## Spec compliance
 
-Every checkbox on Jason's spec maps to a file in this repo. See `docs/spec-compliance.md`.
+All 3 hard requirements and 8 spec items implemented. See [`docs/spec-compliance.md`](docs/spec-compliance.md).
 
-## Quick start
-
-```bash
-# 1. Backend
-cd supabase && supabase start && supabase db push
-
-# 2. Extension (dev mode)
-cd extension && npm install && npm run dev
-# Then load /extension/dist as unpacked extension in chrome://extensions
-
-# 3. Web app
-cd web && npm install && npm run dev
-
-# 4. Worker (transcoding)
-cd worker && docker build -t annotated-worker . && docker run -p 8000:8000 annotated-worker
-```
-
-See `docs/build-plan.md` for the full 5-day plan.
+| Requirement | Status |
+|---|---|
+| Chrome sidebar extension as primary surface | ✅ |
+| File a claim button on every annotation | ✅ |
+| All content links to source URL | ✅ |
+| Max 90-second clips | ✅ |
+| Video downscaled to 240p | ✅ |
+| OAuth via X or Google only | ✅ |
+| Public feed with follow + comment | ✅ |
+| Text + audio commentary | ✅ |
 
 ## Repo layout
 
 ```
 annotated/
-├── docs/                    storyboard, build plan, spec compliance, demo script
-├── extension/               Chrome MV3 sidebar extension (Vite + React)
-├── web/                     public web app (Lovable-generated, exported)
-├── supabase/                migrations, RLS policies, edge functions
-├── worker/                  Python yt-dlp + ffmpeg transcoder (Railway)
-└── .github/workflows/       CI for extension build
+├── extension/     Chrome MV3 sidebar extension (React + Vite)
+├── web/           Next.js 16 web app (landing, feed, annotation pages)
+├── worker/        Python transcoding worker (ffmpeg, deployed on Railway)
+├── supabase/      Migrations, RLS policies, edge functions
+└── docs/          Storyboard, build plan, spec compliance
 ```
-
-## Status
-
-Day 0 — repo scaffold complete. Build starts now.

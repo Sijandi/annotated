@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
+import type { Metadata } from "next";
 import { SourceBadge } from "@/components/SourceBadge";
 import { ClaimForm } from "@/components/ClaimForm";
 import { CommentSection } from "@/components/CommentSection";
@@ -8,6 +9,50 @@ import { DeleteButton } from "@/components/DeleteButton";
 import { ShareButton } from "@/components/ShareButton";
 
 export const dynamic = "force-dynamic";
+
+function getSupabaseForMeta() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const supabase = getSupabaseForMeta();
+  const { data } = await supabase
+    .from("annotations")
+    .select("source_title, commentary_text, source_type, source_thumbnail_url")
+    .eq("slug", slug)
+    .single();
+
+  if (!data) return { title: "Annotated" };
+
+  const title = data.source_title || "Annotated";
+  const description = data.commentary_text
+    ? data.commentary_text.slice(0, 160)
+    : `${data.source_type} clip on Annotated`;
+
+  return {
+    title: `${title} — Annotated`,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "article",
+      images: data.source_thumbnail_url ? [data.source_thumbnail_url] : [],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+  };
+}
 
 function getSupabase() {
   return createClient(
