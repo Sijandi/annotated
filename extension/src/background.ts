@@ -65,17 +65,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'STOP_RECORDING') {
-    audioResponseCallback = sendResponse;
     chrome.storage.session.set({ audioCmd: { action: 'stop', ts: Date.now() } });
-    return true; // keep channel open
+    sendResponse({ ok: true });
+    return false;
   }
 
-  // Offscreen sends back recording data
+  // Offscreen sends back recording data — store in session for sidebar to pick up
   if (message.type === 'AUDIO_RESULT') {
-    if (audioResponseCallback) {
-      audioResponseCallback(message);
-      audioResponseCallback = null;
-    }
+    chrome.storage.session.set({ audioResult: { dataUrl: message.dataUrl, error: message.error } });
     return false;
   }
 });

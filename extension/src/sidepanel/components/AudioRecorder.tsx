@@ -45,12 +45,31 @@ export function AudioRecorder({ onRecorded, onCleared }: Props) {
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'STOP_RECORDING' });
-      if (response?.error) throw new Error(response.error);
-      if (!response?.dataUrl) throw new Error('No audio data received');
+      // Watch session storage for the audio result
+      const resultPromise = new Promise<any>((resolve) => {
+        const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+          if (changes.audioResult) {
+            chrome.storage.session.onChanged.removeListener(listener);
+            resolve(changes.audioResult.newValue);
+            chrome.storage.session.remove('audioResult');
+          }
+        };
+        chrome.storage.session.onChanged.addListener(listener);
+        setTimeout(() => {
+          chrome.storage.session.onChanged.removeListener(listener);
+          resolve({ error: 'Recording timed out' });
+        }, 10000);
+      });
+
+      // Tell background to stop
+      chrome.runtime.sendMessage({ type: 'STOP_RECORDING' });
+
+      const result = await resultPromise;
+      if (result.error) throw new Error(result.error);
+      if (!result.dataUrl) throw new Error('No audio data received');
 
       // Convert data URL to blob
-      const res = await fetch(response.dataUrl);
+      const res = await fetch(result.dataUrl);
       const blob = await res.blob();
 
       audioUrlRef.current = URL.createObjectURL(blob);
