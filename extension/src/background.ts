@@ -1,5 +1,4 @@
 // Background service worker for Annotated extension
-// MV3 service workers are ephemeral — persist state to chrome.storage.local
 
 // Open side panel when user clicks the action icon
 chrome.sidePanel
@@ -7,10 +6,7 @@ chrome.sidePanel
   .catch((error) => console.error('[annotated] sidePanel setup failed:', error));
 
 // Offscreen document management
-let offscreenReady = false;
-
 async function ensureOffscreen() {
-  if (offscreenReady) return;
   try {
     const contexts = await (chrome.runtime as any).getContexts({
       contextTypes: ['OFFSCREEN_DOCUMENT'],
@@ -22,16 +18,15 @@ async function ensureOffscreen() {
         justification: 'Recording audio commentary',
       });
     }
-    offscreenReady = true;
   } catch (e) {
-    console.error('[annotated] offscreen setup error:', e);
+    console.error('[annotated] offscreen error:', e);
+    throw e;
   }
 }
 
-// Store for pending offscreen callbacks
-let pendingCallback: ((response: any) => void) | null = null;
+// Audio recording state
+let audioResponseCallback: ((data: any) => void) | null = null;
 
-// Listen for messages from sidebar and offscreen
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_ACTIVE_TAB') {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -60,35 +55,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Sidebar requests to start/stop recording
+  // Sidebar requests recording
   if (message.type === 'START_RECORDING') {
-    ensureOffscreen().then(() => {
-      // Forward to offscreen via storage-based message passing
-      chrome.storage.local.set({ audioCommand: 'start' }, () => {
-        sendResponse({ ok: true });
-      });
-    }).catch(err => sendResponse({ error: err.message }));
+    ensureOffscreen()
+      .then(() => chrome.storage.session.set({ audioCmd: { action: 'start', ts: Date.now() } }))
+      .then(() => sendResponse({ ok: true }))
+      .catch(err => sendResponse({ error: err.message }));
     return true;
   }
 
   if (message.type === 'STOP_RECORDING') {
-    chrome.storage.local.set({ audioCommand: 'stop' });
-    // Store callback for when offscreen responds
-    pendingCallback = sendResponse;
-    return true;
+    audioResponseCallback = sendResponse;
+    chrome.storage.session.set({ audioCmd: { action: 'stop', ts: Date.now() } });
+    return true; // keep channel open
   }
 
-  // Response from offscreen document
-  if (message.type === 'RECORDING_RESULT') {
-    if (pendingCallback) {
-      pendingCallback(message);
-      pendingCallback = null;
+  // Offscreen sends back recording data
+  if (message.type === 'AUDIO_RESULT') {
+    if (audioResponseCallback) {
+      audioResponseCallback(message);
+      audioResponseCallback = null;
     }
     return false;
   }
 });
 
-// On install, log status
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[annotated] installed');
 });
