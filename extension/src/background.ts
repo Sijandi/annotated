@@ -11,9 +11,7 @@ async function ensureOffscreen(reason: chrome.offscreen.Reason, justification: s
     const contexts = await (chrome.runtime as any).getContexts({
       contextTypes: ['OFFSCREEN_DOCUMENT'],
     });
-    if (contexts.length > 0) {
-      await chrome.offscreen.closeDocument();
-    }
+    if (contexts.length > 0) return; // already exists
     await chrome.offscreen.createDocument({
       url: 'offscreen.html',
       reasons: [reason],
@@ -50,6 +48,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ time: results?.[0]?.result ?? null });
       }
     );
+    return true;
+  }
+
+  // Ensure offscreen doc exists
+  if (message.type === 'ENSURE_OFFSCREEN') {
+    ensureOffscreen(chrome.offscreen.Reason.USER_MEDIA, 'Media processing')
+      .then(() => sendResponse({ ok: true }))
+      .catch(err => sendResponse({ error: err.message }));
     return true;
   }
 

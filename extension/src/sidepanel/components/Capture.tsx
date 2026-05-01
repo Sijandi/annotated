@@ -146,14 +146,11 @@ export function Capture({ session }: { session: Session }) {
           throw new Error(captureResponse?.error || 'Failed to capture tab');
         }
 
-        // Ensure offscreen doc is ready
-        await new Promise<void>((resolve, reject) => {
-          chrome.runtime.sendMessage({ type: 'START_RECORDING' }, (res) => {
-            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-            else resolve();
-          });
+        // Ensure offscreen doc exists
+        await new Promise<void>((resolve) => {
+          chrome.runtime.sendMessage({ type: 'ENSURE_OFFSCREEN' }, () => resolve());
         });
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 300));
 
         // Seek video to start
         await new Promise<void>((resolve) => {
@@ -161,19 +158,8 @@ export function Capture({ session }: { session: Session }) {
         });
         await new Promise(r => setTimeout(r, 800));
 
-        // Start tab capture recording in offscreen
-        chrome.storage.local.set({
-          captureCmd: { action: 'start', streamId: captureResponse.streamId, duration: clipDuration }
-        });
-
-        // Play the video
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id! },
-          func: () => { document.querySelector('video')?.play(); },
-        });
-
-        // Wait for capture result
-        const result = await new Promise<any>((resolve) => {
+        // Set up result listener BEFORE starting capture
+        const resultPromise = new Promise<any>((resolve) => {
           const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
             if (changes.captureResult?.newValue) {
               chrome.storage.local.onChanged.removeListener(listener);
@@ -188,20 +174,34 @@ export function Capture({ session }: { session: Session }) {
           }, (clipDuration + 15) * 1000);
         });
 
+        // Start tab capture recording in offscreen
+        chrome.storage.local.set({
+          captureCmd: { action: 'start', streamId: captureResponse.streamId, duration: clipDuration }
+        });
+
+        // Play the video
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id! },
+          func: () => { document.querySelector('video')?.play(); },
+        });
+
+        // Wait for capture result
+        const result = await resultPromise;
+
         // Pause video
         chrome.scripting.executeScript({
           target: { tabId: tab.id! },
           func: () => { document.querySelector('video')?.pause(); },
         });
 
-        if (result.error) throw new Error(result.error);
-        if (!result.dataUrl) throw new Error('No video data captured');
+        if (result?.error) throw new Error(result.error);
+        if (!result?.dataUrl) throw new Error('No video data captured');
 
         const res = await fetch(result.dataUrl);
         rawVideoBlob = await res.blob();
       } catch (err: any) {
         console.error('[annotated] capture failed:', err);
-        setError(err.message || 'Failed to capture video');
+        setError(`Capture error: ${err?.message || String(err)}`);
         setStep('commentary');
         return;
       }
