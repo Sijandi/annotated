@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Record Commentary</title>
+<style>
+  body { background: #09090b; color: #f4f4f5; font-family: system-ui; margin: 0; padding: 20px; min-width: 300px; }
+  button { background: #27272a; color: #f4f4f5; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; width: 100%; margin: 6px 0; }
+  button:hover { background: #3f3f46; }
+  #record-btn { background: rgba(239,68,68,0.2); color: #f87171; }
+  #status { text-align: center; margin: 12px 0; font-size: 13px; color: #a1a1aa; }
+  .dot { display: inline-block; width: 10px; height: 10px; background: #ef4444; border-radius: 50%; margin-right: 8px; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  #timer { font-family: monospace; font-size: 18px; text-align: center; margin: 8px 0; }
+</style>
+</head>
+<body>
+<div id="status">Click to start recording</div>
+<div id="timer" style="display:none">0:00</div>
+<button id="record-btn" onclick="toggleRecording()">🎙 Start Recording</button>
+<button id="done-btn" style="display:none" onclick="finishRecording()">✓ Use This Recording</button>
+
+<script>
+let mediaRecorder = null;
+let chunks = [];
+let timerInterval = null;
+let seconds = 0;
+let audioBlob = null;
+
+async function toggleRecording() {
+  const btn = document.getElementById('record-btn');
+  const status = document.getElementById('status');
+  const timer = document.getElementById('timer');
+  const doneBtn = document.getElementById('done-btn');
+
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      chunks = [];
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      mediaRecorder.onstop = () => {
+        audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        stream.getTracks().forEach(t => t.stop());
+        status.innerHTML = 'Recording saved. Click "Use This Recording" to continue.';
+        btn.textContent = '🎙 Re-record';
+        doneBtn.style.display = 'block';
+      };
+      mediaRecorder.start(100);
+      seconds = 0;
+      timer.style.display = 'block';
+      timerInterval = setInterval(() => {
+        seconds++;
+        timer.textContent = Math.floor(seconds/60) + ':' + (seconds%60).toString().padStart(2,'0');
+      }, 1000);
+      status.innerHTML = '<span class="dot"></span>Recording...';
+      btn.textContent = '⏹ Stop Recording';
+    } catch(e) {
+      status.textContent = 'Microphone error: ' + e.message;
+    }
+  } else {
+    clearInterval(timerInterval);
+    mediaRecorder.stop();
+  }
+}
+
+function finishRecording() {
+  if (!audioBlob) return;
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    chrome.storage.local.set({ audioResult: { dataUrl: reader.result } }, () => {
+      window.close();
+    });
+  };
+  reader.readAsDataURL(audioBlob);
+}
+</script>
+</body>
+</html>
