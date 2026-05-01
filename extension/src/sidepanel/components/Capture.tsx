@@ -83,16 +83,24 @@ export function Capture({ session }: { session: Session }) {
         });
         if (!tab?.id) throw new Error('No active tab');
 
-        const response = await new Promise<{ dataUrl?: string; error?: string }>((resolve) => {
-          chrome.tabs.sendMessage(tab.id!, { type: 'CAPTURE_VIDEO_CLIP', start: data.start, end: data.end }, resolve);
+        const response = await new Promise<{ dataUrl?: string; error?: string }>((resolve, reject) => {
+          chrome.tabs.sendMessage(tab.id!, { type: 'CAPTURE_VIDEO_CLIP', start: data.start, end: data.end }, (res) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message || 'Content script not responding'));
+              return;
+            }
+            resolve(res);
+          });
         });
 
-        if (response.error) throw new Error(response.error);
-        if (!response.dataUrl) throw new Error('No video data returned');
+        if (response?.error) throw new Error(response.error);
+        if (!response?.dataUrl) throw new Error('No video data captured. Try refreshing the YouTube page and try again.');
 
         // Convert data URL to Blob
         const res = await fetch(response.dataUrl);
         const blob = await res.blob();
+
+        if (blob.size < 1000) throw new Error('Captured clip is too small. The video may not have played correctly.');
 
         setClipState({
           sourceType: 'youtube',
@@ -106,6 +114,7 @@ export function Capture({ session }: { session: Session }) {
         });
         setStep('commentary');
       } catch (err: any) {
+        console.error('[annotated] capture failed:', err);
         setError(err.message || 'Failed to capture video clip');
         setStep('capture');
       }
