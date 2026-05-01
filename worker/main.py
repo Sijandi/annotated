@@ -107,10 +107,11 @@ def process_clip(annotation_id: str, source_url: str, source_type: str, start: f
             print(f"[worker] published annotation {annotation_id}")
 
     except subprocess.CalledProcessError as e:
-        print(f"[worker] subprocess failed for {annotation_id}: {e.stderr}")
+        stderr = e.stderr or ""
+        print(f"[worker] subprocess failed for {annotation_id}: {stderr}")
         sb.table("annotations").update({
             "status": "failed",
-            "error_message": f"transcode failed: {str(e)[:500]}",
+            "error_message": f"transcode failed: {stderr[:500]}",
         }).eq("id", annotation_id).execute()
     except Exception as e:
         print(f"[worker] error processing {annotation_id}: {e}")
@@ -125,11 +126,12 @@ def _process_youtube(url: str, start: float, duration: float, output_path: Path)
     tmpdir = output_path.parent
     raw_path = tmpdir / "raw_download.mp4"
 
-    # Step 1: Download the full video at low quality
+    # Step 1: Download the video at best available quality
     dl_cmd = [
         "yt-dlp",
-        "-f", "bv*[height<=480]+ba/b[height<=480]/b",
+        "-f", "best[height<=720]/best",
         "--merge-output-format", "mp4",
+        "--no-warnings",
         "-o", str(raw_path),
         url,
     ]
