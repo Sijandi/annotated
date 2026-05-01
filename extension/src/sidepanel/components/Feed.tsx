@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { RefreshCw, UserPlus, UserMinus, ExternalLink } from 'lucide-react';
+import { RefreshCw, UserPlus, UserMinus, ExternalLink, Trash2 } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 
 interface Annotation {
@@ -95,6 +95,12 @@ export function Feed({ session }: { session: Session }) {
       });
       setFollowing((prev) => new Set(prev).add(userId));
     }
+  };
+
+  const deleteAnnotation = async (id: string) => {
+    if (!confirm('Delete this annotation?')) return;
+    await supabase.from('annotations').delete().eq('id', id);
+    setAnnotations(prev => prev.filter(a => a.id !== id));
   };
 
   const openAnnotation = (slug: string) => {
@@ -212,7 +218,21 @@ export function Feed({ session }: { session: Session }) {
                 <p className="text-sm text-zinc-200 line-clamp-2">{a.source_title}</p>
               )}
 
-              <p className="text-xs text-zinc-500">{timeAgo(a.created_at)}</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-zinc-500">{timeAgo(a.created_at)}</p>
+                {isOwnPost && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteAnnotation(a.id);
+                    }}
+                    className="p-1 hover:bg-zinc-700 rounded transition"
+                    title="Delete"
+                  >
+                    <Trash2 className="w-3 h-3 text-zinc-600 hover:text-red-400" />
+                  </button>
+                )}
+              </div>
             </div>
           );
         })
