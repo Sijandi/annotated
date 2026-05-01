@@ -2,7 +2,7 @@
 Annotated transcoding worker.
 
 Receives webhook from Supabase Edge Function on new annotations,
-downloads source media via yt-dlp, clips and downscales via ffmpeg,
+downloads source media via cobalt API, clips and downscales via ffmpeg,
 uploads to Supabase Storage, updates the annotation row.
 
 Deploy on Railway. Required env vars:
@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import httpx
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from supabase import Client, create_client
@@ -121,21 +122,48 @@ def process_clip(annotation_id: str, source_url: str, source_type: str, start: f
         }).eq("id", annotation_id).execute()
 
 
+def _download_via_cobalt(url: str, output_path: Path):
+    """Download video via cobalt.tools API."""
+    resp = httpx.post(
+        "https://api.cobalt.tools/",
+        json={"url": url, "videoQuality": "480"},
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    if data.get("status") == "error":
+        raise RuntimeError(f"cobalt error: {data.get('error', {}).get('code', 'unknown')}")
+
+    download_url = data.get("url")
+    if not download_url:
+        # tunnel or redirect type
+        if data.get("status") == "tunnel" or data.get("status") == "redirect":
+            download_url = data.get("url")
+        if not download_url:
+            raise RuntimeError(f"cobalt returned no download URL: {data}")
+
+    # Download the file
+    with httpx.stream("GET", download_url, timeout=300, follow_redirects=True) as stream:
+        stream.raise_for_status()
+        with open(output_path, "wb") as f:
+            for chunk in stream.iter_bytes(chunk_size=8192):
+                f.write(chunk)
+
+    print(f"[worker] downloaded {output_path.stat().st_size} bytes via cobalt")
+
+
 def _process_youtube(url: str, start: float, duration: float, output_path: Path):
-    """Download YouTube video, then clip and downscale to 240p with ffmpeg."""
+    """Download YouTube video via cobalt, then clip and downscale to 240p with ffmpeg."""
     tmpdir = output_path.parent
     raw_path = tmpdir / "raw_download.mp4"
 
-    # Step 1: Download the video at best available quality
-    dl_cmd = [
-        "yt-dlp",
-        "-f", "best[height<=720]/best",
-        "--merge-output-format", "mp4",
-        "--no-warnings",
-        "-o", str(raw_path),
-        url,
-    ]
-    subprocess.run(dl_cmd, check=True, capture_output=True, text=True, timeout=300)
+    # Step 1: Download via cobalt
+    _download_via_cobalt(url, raw_path)
 
     # Step 2: Clip and downscale with ffmpeg
     clip_cmd = [
