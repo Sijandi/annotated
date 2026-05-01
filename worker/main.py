@@ -1,16 +1,16 @@
 """
 Annotated transcoding worker.
 
-Receives webhook from Supabase Edge Function on new annotations,
-downloads source media via yt-dlp, clips and downscales via ffmpeg,
-uploads to Supabase Storage, updates the annotation row.
+Receives webhook from Supabase Edge Function on new annotations.
+For YouTube: downloads raw client-captured clip from Supabase Storage,
+downscales to 240p with ffmpeg, re-uploads processed version.
+For podcasts: downloads from audio URL, clips with ffmpeg.
 
 Deploy on Railway. Required env vars:
   SUPABASE_URL
   SUPABASE_SERVICE_KEY  (service role, bypasses RLS)
   WORKER_SECRET         (shared with edge function)
 """
-import base64
 import os
 import subprocess
 import tempfile
@@ -24,7 +24,6 @@ from supabase import Client, create_client
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 WORKER_SECRET = os.environ["WORKER_SECRET"]
-YT_COOKIES_B64 = os.environ.get("YT_COOKIES_B64", "")
 
 MAX_CLIP_SECONDS = 90
 TARGET_HEIGHT = 240  # spec: 240px, must be < 480p
@@ -74,14 +73,14 @@ async def transcode(
 
 
 def process_clip(annotation_id: str, source_url: str, source_type: str, start: float, duration: float):
-    """Download, clip, downscale, upload, update DB row."""
+    """Download, transcode, upload, update DB row."""
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmppath = Path(tmpdir)
 
             if source_type == "youtube":
                 output_path = tmppath / f"{annotation_id}.mp4"
-                _process_youtube(source_url, start, duration, output_path)
+                _process_youtube(annotation_id, output_path)
                 storage_path = f"{annotation_id}.mp4"
                 content_type = "video/mp4"
             elif source_type == "podcast":
@@ -92,7 +91,7 @@ def process_clip(annotation_id: str, source_url: str, source_type: str, start: f
             else:
                 raise ValueError(f"unsupported source_type: {source_type}")
 
-            # Upload to Supabase Storage
+            # Upload processed clip to Supabase Storage
             with open(output_path, "rb") as f:
                 sb.storage.from_("clips").upload(
                     storage_path,
@@ -124,52 +123,37 @@ def process_clip(annotation_id: str, source_url: str, source_type: str, start: f
         }).eq("id", annotation_id).execute()
 
 
-def _process_youtube(url: str, start: float, duration: float, output_path: Path):
-    """Download YouTube video via yt-dlp, then clip and downscale with ffmpeg."""
+def _process_youtube(annotation_id: str, output_path: Path):
+    """Download raw clip from Supabase Storage, downscale to 240p mp4."""
     tmpdir = output_path.parent
-    raw_path = tmpdir / "raw_download.mp4"
 
-    # Write cookies file if available
-    cookies_args = []
-    if YT_COOKIES_B64:
-        cookies_path = tmpdir / "cookies.txt"
-        cookies_path.write_bytes(base64.b64decode(YT_COOKIES_B64))
-        cookies_args = ["--cookies", str(cookies_path)]
+    # Get the annotation to find the raw clip URL
+    result = sb.table("annotations").select("media_url").eq("id", annotation_id).single().execute()
+    raw_url = result.data.get("media_url")
+    if not raw_url:
+        raise RuntimeError("No raw clip URL found on annotation")
 
-    # Step 1: Download using tv_embedded client which still has direct URLs
-    dl_cmd = [
-        "yt-dlp",
-        "--extractor-args", "youtube:player_client=tv",
-        "--no-warnings",
-        "-o", str(raw_path),
-    ] + cookies_args + [url]
-    result = subprocess.run(dl_cmd, capture_output=True, text=True, timeout=300)
+    # Download the raw webm from Storage
+    raw_path = tmpdir / "raw.webm"
+    with httpx.stream("GET", raw_url, timeout=120, follow_redirects=True) as resp:
+        resp.raise_for_status()
+        with open(raw_path, "wb") as f:
+            for chunk in resp.iter_bytes(8192):
+                f.write(chunk)
 
-    # If tv client fails, try without cookies (some videos work without auth)
-    if result.returncode != 0:
-        print(f"[worker] tv client failed: {result.stderr[:200]}, trying no-cookies")
-        dl_cmd2 = [
-            "yt-dlp",
-            "--extractor-args", "youtube:player_client=tv",
-            "--no-warnings",
-            "-o", str(raw_path),
-            url,
-        ]
-        subprocess.run(dl_cmd2, check=True, capture_output=True, text=True, timeout=300)
+    print(f"[worker] downloaded raw clip: {raw_path.stat().st_size} bytes")
 
-    # Step 2: Clip and downscale with ffmpeg
-    clip_cmd = [
+    # Downscale to 240p mp4
+    cmd = [
         "ffmpeg",
         "-y",
-        "-ss", str(start),
-        "-t", str(duration),
         "-i", str(raw_path),
         "-vf", f"scale=-2:{TARGET_HEIGHT}",
         "-c:v", "libx264", "-preset", "fast", "-crf", "28",
         "-c:a", "aac", "-b:a", "96k",
         str(output_path),
     ]
-    subprocess.run(clip_cmd, check=True, capture_output=True, text=True, timeout=120)
+    subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
 
 
 def _process_podcast(audio_url: str, start: float, duration: float, output_path: Path):

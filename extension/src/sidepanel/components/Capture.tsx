@@ -29,9 +29,10 @@ interface ClipState {
   clipEnd?: number;
   clipText?: string;
   audioSrc?: string;
+  rawVideoBlob?: Blob;
 }
 
-type Step = 'capture' | 'commentary' | 'publishing' | 'done';
+type Step = 'capture' | 'recording' | 'commentary' | 'publishing' | 'done';
 
 function generateSlug(title: string): string {
   const base = title
@@ -69,19 +70,59 @@ export function Capture({ session }: { session: Session }) {
     await supabase.auth.signOut();
   };
 
-  const handleClipReady = (data: { start: number; end: number; audioSrc?: string }) => {
+  const handleClipReady = async (data: { start: number; end: number; audioSrc?: string }) => {
     if (!pageContext) return;
-    setClipState({
-      sourceType: pageContext.sourceType as 'youtube' | 'podcast',
-      sourceUrl: pageContext.url,
-      sourceTitle: pageContext.title,
-      sourceAuthor: pageContext.metadata.author,
-      sourceThumbnail: pageContext.metadata.image,
-      clipStart: data.start,
-      clipEnd: data.end,
-      audioSrc: data.audioSrc,
-    });
-    setStep('commentary');
+
+    if (pageContext.sourceType === 'youtube') {
+      // Capture video client-side
+      setStep('recording');
+      setError(null);
+      try {
+        const tab = await new Promise<chrome.tabs.Tab>((resolve) => {
+          chrome.tabs.query({ active: true, currentWindow: true }, ([t]) => resolve(t));
+        });
+        if (!tab?.id) throw new Error('No active tab');
+
+        const response = await new Promise<{ dataUrl?: string; error?: string }>((resolve) => {
+          chrome.tabs.sendMessage(tab.id!, { type: 'CAPTURE_VIDEO_CLIP', start: data.start, end: data.end }, resolve);
+        });
+
+        if (response.error) throw new Error(response.error);
+        if (!response.dataUrl) throw new Error('No video data returned');
+
+        // Convert data URL to Blob
+        const res = await fetch(response.dataUrl);
+        const blob = await res.blob();
+
+        setClipState({
+          sourceType: 'youtube',
+          sourceUrl: pageContext.url,
+          sourceTitle: pageContext.title,
+          sourceAuthor: pageContext.metadata.author,
+          sourceThumbnail: pageContext.metadata.image,
+          clipStart: data.start,
+          clipEnd: data.end,
+          rawVideoBlob: blob,
+        });
+        setStep('commentary');
+      } catch (err: any) {
+        setError(err.message || 'Failed to capture video clip');
+        setStep('capture');
+      }
+    } else {
+      // Podcast — worker downloads from audio src
+      setClipState({
+        sourceType: pageContext.sourceType as 'podcast',
+        sourceUrl: pageContext.url,
+        sourceTitle: pageContext.title,
+        sourceAuthor: pageContext.metadata.author,
+        sourceThumbnail: pageContext.metadata.image,
+        clipStart: data.start,
+        clipEnd: data.end,
+        audioSrc: data.audioSrc,
+      });
+      setStep('commentary');
+    }
   };
 
   const handleTextReady = (text: string) => {
@@ -121,6 +162,18 @@ export function Capture({ session }: { session: Session }) {
         commentaryAudioUrl = urlData.publicUrl;
       }
 
+      // Upload raw video clip if captured client-side
+      let rawClipUrl: string | undefined;
+      if (clipState.rawVideoBlob) {
+        const rawFilename = `raw/${session.user.id}/${slug}.webm`;
+        const { error: rawUploadErr } = await supabase.storage
+          .from('clips')
+          .upload(rawFilename, clipState.rawVideoBlob, { contentType: 'video/webm', upsert: true });
+        if (rawUploadErr) throw rawUploadErr;
+        const { data: rawUrlData } = supabase.storage.from('clips').getPublicUrl(rawFilename);
+        rawClipUrl = rawUrlData.publicUrl;
+      }
+
       // For articles, publish directly. For youtube/podcast, set to processing (worker will transcode).
       const status = clipState.sourceType === 'article' ? 'published' : 'processing';
 
@@ -136,6 +189,7 @@ export function Capture({ session }: { session: Session }) {
         clip_text: clipState.clipText,
         commentary_text: commentary.text,
         commentary_audio_url: commentaryAudioUrl,
+        media_url: rawClipUrl,
         status,
         slug,
       });
@@ -219,6 +273,17 @@ export function Capture({ session }: { session: Session }) {
               </div>
             )}
           </>
+        )}
+
+        {step === 'recording' && (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <div className="relative flex h-6 w-6">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-6 w-6 bg-red-500" />
+            </div>
+            <p className="text-sm text-zinc-400">Recording clip from page...</p>
+            <p className="text-xs text-zinc-600">The video will play through your selected range.</p>
+          </div>
         )}
 
         {step === 'commentary' && (
