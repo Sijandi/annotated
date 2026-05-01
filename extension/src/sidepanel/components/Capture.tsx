@@ -74,88 +74,17 @@ export function Capture({ session }: { session: Session }) {
     if (!pageContext) return;
 
     if (pageContext.sourceType === 'youtube') {
-      // Capture video+audio via tabCapture
-      setStep('recording');
-      setError(null);
-      try {
-        const tab = await new Promise<chrome.tabs.Tab>((resolve) => {
-          chrome.tabs.query({ active: true, currentWindow: true }, ([t]) => resolve(t));
-        });
-        if (!tab?.id) throw new Error('No active tab');
-
-        const clipDuration = data.end - data.start;
-
-        // 1. Get tab capture stream ID from background
-        const captureResponse = await new Promise<{ streamId?: string; error?: string }>((resolve) => {
-          chrome.runtime.sendMessage({ type: 'CAPTURE_TAB', tabId: tab.id }, resolve);
-        });
-        if (captureResponse.error || !captureResponse.streamId) {
-          throw new Error(captureResponse.error || 'Failed to capture tab');
-        }
-
-        // 2. Seek video to start time
-        await new Promise<void>((resolve) => {
-          chrome.tabs.sendMessage(tab.id!, { type: 'SEEK_VIDEO', time: data.start }, () => {
-            setTimeout(resolve, 500); // wait for seek
-          });
-        });
-
-        // 3. Start recording in offscreen document
-        chrome.storage.local.set({
-          captureCmd: { action: 'start', streamId: captureResponse.streamId, duration: clipDuration }
-        });
-
-        // 4. Play the video
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id! },
-          func: () => { document.querySelector('video')?.play(); },
-        });
-
-        // 5. Wait for capture result
-        const result = await new Promise<any>((resolve) => {
-          const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-            if (changes.captureResult?.newValue) {
-              chrome.storage.local.onChanged.removeListener(listener);
-              chrome.storage.local.remove('captureResult');
-              resolve(changes.captureResult.newValue);
-            }
-          };
-          chrome.storage.local.onChanged.addListener(listener);
-          // Timeout
-          setTimeout(() => {
-            chrome.storage.local.onChanged.removeListener(listener);
-            resolve({ error: 'Capture timed out' });
-          }, (clipDuration + 10) * 1000);
-        });
-
-        if (result.error) throw new Error(result.error);
-        if (!result.dataUrl) throw new Error('No video data captured');
-
-        // 6. Pause the video
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id! },
-          func: () => { document.querySelector('video')?.pause(); },
-        });
-
-        const res = await fetch(result.dataUrl);
-        const blob = await res.blob();
-
-        setClipState({
-          sourceType: 'youtube',
-          sourceUrl: pageContext.url,
-          sourceTitle: pageContext.title,
-          sourceAuthor: pageContext.metadata.author,
-          sourceThumbnail: pageContext.metadata.image,
-          clipStart: data.start,
-          clipEnd: data.end,
-          rawVideoBlob: blob,
-        });
-        setStep('commentary');
-      } catch (err: any) {
-        console.error('[annotated] capture failed:', err);
-        setError(err.message || 'Failed to capture video clip');
-        setStep('capture');
-      }
+      // Just save clip times, capture happens at publish
+      setClipState({
+        sourceType: 'youtube',
+        sourceUrl: pageContext.url,
+        sourceTitle: pageContext.title,
+        sourceAuthor: pageContext.metadata.author,
+        sourceThumbnail: pageContext.metadata.image,
+        clipStart: data.start,
+        clipEnd: data.end,
+      });
+      setStep('commentary');
     } else {
       // Podcast — worker downloads from audio src
       setClipState({
@@ -187,11 +116,90 @@ export function Capture({ session }: { session: Session }) {
 
   const handlePublish = async (commentary: CommentaryData) => {
     if (!clipState) return;
-    setStep('publishing');
     setError(null);
 
+    const slug = generateSlug(clipState.sourceTitle);
+    let rawVideoBlob = clipState.rawVideoBlob;
+
+    // For YouTube: capture the clip now via tabCapture
+    if (clipState.sourceType === 'youtube' && !rawVideoBlob && clipState.clipStart != null && clipState.clipEnd != null) {
+      setStep('recording');
+      try {
+        const tab = await new Promise<chrome.tabs.Tab>((resolve) => {
+          chrome.tabs.query({ active: true, currentWindow: true }, ([t]) => resolve(t));
+        });
+        if (!tab?.id) throw new Error('No active tab');
+
+        const clipDuration = clipState.clipEnd! - clipState.clipStart!;
+
+        // Get tab capture stream ID
+        const captureResponse = await new Promise<{ streamId?: string; error?: string }>((resolve) => {
+          chrome.runtime.sendMessage({ type: 'CAPTURE_TAB', tabId: tab.id }, resolve);
+        });
+        if (captureResponse.error || !captureResponse.streamId) {
+          throw new Error(captureResponse.error || 'Failed to capture tab');
+        }
+
+        // Ensure offscreen doc exists
+        await chrome.runtime.sendMessage({ type: 'START_RECORDING' });
+        // Small delay for offscreen to be ready
+        await new Promise(r => setTimeout(r, 500));
+
+        // Seek video to start
+        await new Promise<void>((resolve) => {
+          chrome.tabs.sendMessage(tab.id!, { type: 'SEEK_VIDEO', time: clipState.clipStart }, () => resolve());
+        });
+        await new Promise(r => setTimeout(r, 800));
+
+        // Start tab capture recording in offscreen
+        chrome.storage.local.set({
+          captureCmd: { action: 'start', streamId: captureResponse.streamId, duration: clipDuration }
+        });
+
+        // Play the video
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id! },
+          func: () => { document.querySelector('video')?.play(); },
+        });
+
+        // Wait for capture result
+        const result = await new Promise<any>((resolve) => {
+          const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+            if (changes.captureResult?.newValue) {
+              chrome.storage.local.onChanged.removeListener(listener);
+              chrome.storage.local.remove('captureResult');
+              resolve(changes.captureResult.newValue);
+            }
+          };
+          chrome.storage.local.onChanged.addListener(listener);
+          setTimeout(() => {
+            chrome.storage.local.onChanged.removeListener(listener);
+            resolve({ error: 'Capture timed out' });
+          }, (clipDuration + 15) * 1000);
+        });
+
+        // Pause video
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id! },
+          func: () => { document.querySelector('video')?.pause(); },
+        });
+
+        if (result.error) throw new Error(result.error);
+        if (!result.dataUrl) throw new Error('No video data captured');
+
+        const res = await fetch(result.dataUrl);
+        rawVideoBlob = await res.blob();
+      } catch (err: any) {
+        console.error('[annotated] capture failed:', err);
+        setError(err.message || 'Failed to capture video');
+        setStep('commentary');
+        return;
+      }
+    }
+
+    setStep('publishing');
+
     try {
-      const slug = generateSlug(clipState.sourceTitle);
       let commentaryAudioUrl: string | undefined;
 
       // Upload audio commentary if present
@@ -209,13 +217,13 @@ export function Capture({ session }: { session: Session }) {
         commentaryAudioUrl = urlData.publicUrl;
       }
 
-      // Upload raw video clip if captured client-side
+      // Upload raw video clip if captured
       let rawClipUrl: string | undefined;
-      if (clipState.rawVideoBlob) {
+      if (rawVideoBlob) {
         const rawFilename = `raw/${session.user.id}/${slug}.webm`;
         const { error: rawUploadErr } = await supabase.storage
           .from('clips')
-          .upload(rawFilename, clipState.rawVideoBlob, { contentType: 'video/webm', upsert: true });
+          .upload(rawFilename, rawVideoBlob, { contentType: 'video/webm', upsert: true });
         if (rawUploadErr) throw rawUploadErr;
         const { data: rawUrlData } = supabase.storage.from('clips').getPublicUrl(rawFilename);
         rawClipUrl = rawUrlData.publicUrl;
