@@ -47,9 +47,7 @@ export default function Home() {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <a
-            href="https://github.com/Sijandi/annotated"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#install"
             className="rounded-xl bg-zinc-100 text-zinc-900 px-6 py-3 font-medium hover:bg-white transition"
           >
             Get the Chrome Extension
@@ -60,6 +58,35 @@ export default function Home() {
           >
             Browse the feed →
           </Link>
+        </div>
+
+        <div id="install" className="rounded-xl bg-zinc-900 border border-zinc-800 p-6 max-w-lg mx-auto text-left space-y-3">
+          <p className="text-xs uppercase tracking-wide text-zinc-500">Install the extension</p>
+          <ol className="text-sm text-zinc-400 space-y-2">
+            <li className="flex gap-3"><span className="text-zinc-600 font-mono">1.</span>
+              <span>Clone the repo: <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">git clone https://github.com/Sijandi/annotated.git</code></span>
+            </li>
+            <li className="flex gap-3"><span className="text-zinc-600 font-mono">2.</span>
+              <span>Build: <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">cd extension && npm install && npm run build</code></span>
+            </li>
+            <li className="flex gap-3"><span className="text-zinc-600 font-mono">3.</span>
+              <span>Open <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">chrome://extensions</code> → enable Developer mode</span>
+            </li>
+            <li className="flex gap-3"><span className="text-zinc-600 font-mono">4.</span>
+              <span>Click <span className="text-zinc-200">Load unpacked</span> → select the <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">extension/dist</code> folder</span>
+            </li>
+            <li className="flex gap-3"><span className="text-zinc-600 font-mono">5.</span>
+              <span>Click the Annotated icon in Chrome → sidebar opens</span>
+            </li>
+          </ol>
+          <a
+            href="https://github.com/Sijandi/annotated"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block text-xs text-blue-400 hover:text-blue-300 transition mt-2"
+          >
+            View source on GitHub →
+          </a>
         </div>
 
         <p className="text-xs text-zinc-600">
