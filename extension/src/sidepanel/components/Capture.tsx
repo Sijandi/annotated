@@ -32,7 +32,7 @@ interface ClipState {
   rawVideoBlob?: Blob;
 }
 
-type Step = 'capture' | 'recording' | 'commentary' | 'publishing' | 'done';
+type Step = 'capture' | 'commentary' | 'publishing' | 'done';
 
 function generateSlug(title: string): string {
   const base = title
@@ -119,43 +119,7 @@ export function Capture({ session }: { session: Session }) {
     setError(null);
 
     const slug = generateSlug(clipState.sourceTitle);
-    let rawVideoBlob = clipState.rawVideoBlob;
-
-    // For YouTube: capture the clip via content script canvas recording
-    if (clipState.sourceType === 'youtube' && !rawVideoBlob && clipState.clipStart != null && clipState.clipEnd != null) {
-      setStep('recording');
-      try {
-        const tab = await new Promise<chrome.tabs.Tab>((resolve) => {
-          chrome.tabs.query({ active: true, currentWindow: true }, ([t]) => resolve(t));
-        });
-        if (!tab?.id) throw new Error('No active tab');
-
-        const response = await new Promise<{ dataUrl?: string; error?: string }>((resolve, reject) => {
-          chrome.tabs.sendMessage(tab.id!, {
-            type: 'CAPTURE_VIDEO_CLIP',
-            start: clipState.clipStart,
-            end: clipState.clipEnd,
-          }, (res) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message || 'Content script not responding'));
-              return;
-            }
-            resolve(res || {});
-          });
-        });
-
-        if (response?.error) throw new Error(response.error);
-        if (!response?.dataUrl) throw new Error('No video data captured. Try refreshing the page.');
-
-        const res = await fetch(response.dataUrl);
-        rawVideoBlob = await res.blob();
-      } catch (err: any) {
-        console.error('[annotated] capture failed:', err);
-        setError(`Capture error: ${err?.message || String(err)}`);
-        setStep('commentary');
-        return;
-      }
-    }
+    const rawVideoBlob = clipState.rawVideoBlob;
 
     setStep('publishing');
 
@@ -288,17 +252,6 @@ export function Capture({ session }: { session: Session }) {
               </div>
             )}
           </>
-        )}
-
-        {step === 'recording' && (
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <div className="relative flex h-6 w-6">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-6 w-6 bg-red-500" />
-            </div>
-            <p className="text-sm text-zinc-400">Recording clip from page...</p>
-            <p className="text-xs text-zinc-600">The video will play through your selected range.</p>
-          </div>
         )}
 
         {step === 'commentary' && (
