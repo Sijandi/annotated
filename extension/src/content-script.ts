@@ -77,7 +77,7 @@ function getPageContext(): PageContext {
   return ctx;
 }
 
-// Capture video clip via canvas + MediaRecorder
+// Capture video clip via captureStream or canvas fallback
 async function captureVideoClip(startTime: number, endTime: number): Promise<string> {
   const video = document.querySelector('video');
   if (!video) throw new Error('No video element found');
@@ -85,30 +85,33 @@ async function captureVideoClip(startTime: number, endTime: number): Promise<str
   const duration = endTime - startTime;
   if (duration <= 0 || duration > 90) throw new Error('Invalid clip duration');
 
-  // Create canvas matching video dimensions
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth || 1280;
-  canvas.height = video.videoHeight || 720;
-  const ctx = canvas.getContext('2d')!;
+  let stream: MediaStream;
 
-  // Set up MediaRecorder to capture canvas + audio
-  const canvasStream = canvas.captureStream(30);
-
-  // Try to capture audio from the video element
+  // Try captureStream first — gets both video and audio
   try {
-    const audioCtx = new AudioContext();
-    const source = audioCtx.createMediaElementSource(video);
-    const dest = audioCtx.createMediaStreamDestination();
-    source.connect(dest);
-    source.connect(audioCtx.destination); // Keep audio playing
-    dest.stream.getAudioTracks().forEach(track => canvasStream.addTrack(track));
+    stream = (video as any).captureStream(30);
+    console.log('[annotated] Using captureStream — audio tracks:', stream.getAudioTracks().length);
   } catch {
-    // Audio capture may fail due to CORS — continue without audio
-    console.warn('[annotated] Could not capture audio, recording video only');
+    // Fallback to canvas (video only, no audio)
+    console.warn('[annotated] captureStream failed, falling back to canvas');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    stream = canvas.captureStream(30);
+
+    // Draw loop for canvas fallback
+    const ctx = canvas.getContext('2d')!;
+    const drawCanvas = () => {
+      if (video.paused || video.ended) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      requestAnimationFrame(drawCanvas);
+    };
+    // Start drawing when video plays
+    video.addEventListener('play', drawCanvas, { once: false });
   }
 
-  const recorder = new MediaRecorder(canvasStream, {
-    mimeType: 'video/webm;codecs=vp8',
+  const recorder = new MediaRecorder(stream, {
+    mimeType: 'video/webm;codecs=vp8,opus',
     videoBitsPerSecond: 2_000_000,
   });
 
@@ -135,17 +138,16 @@ async function captureVideoClip(startTime: number, endTime: number): Promise<str
     recorder.start(100);
     video.play();
 
-    // Draw video frames to canvas
-    const drawFrame = () => {
+    // Monitor playback position to stop at end time
+    const checkPosition = () => {
       if (video.currentTime >= endTime || video.paused || video.ended) {
         video.pause();
-        recorder.stop();
+        if (recorder.state === 'recording') recorder.stop();
         return;
       }
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      requestAnimationFrame(drawFrame);
+      requestAnimationFrame(checkPosition);
     };
-    drawFrame();
+    checkPosition();
 
     // Safety timeout
     setTimeout(() => {
