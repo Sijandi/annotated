@@ -69,7 +69,6 @@ export async function signInWithProvider(provider: Provider): Promise<void> {
   }
 
   if (!access_token || !refresh_token) {
-    console.error('[annotated] callback URL:', responseUrl);
     throw new Error('OAuth response missing tokens');
   }
 
