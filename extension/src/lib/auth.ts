@@ -47,13 +47,29 @@ export async function signInWithProvider(provider: Provider): Promise<void> {
     );
   });
 
-  // Parse the callback URL for tokens (Supabase returns them in the hash fragment)
+  // Parse the callback URL for tokens
+  // Supabase returns them in hash fragment (#) for implicit flow
+  // or as query params (?) for some providers
   const url = new URL(responseUrl);
-  const params = new URLSearchParams(url.hash.replace(/^#/, ''));
-  const access_token = params.get('access_token');
-  const refresh_token = params.get('refresh_token');
+  const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
+  const queryParams = url.searchParams;
+
+  const access_token = hashParams.get('access_token') || queryParams.get('access_token');
+  const refresh_token = hashParams.get('refresh_token') || queryParams.get('refresh_token');
+
+  // If no tokens but there's a code, exchange it
+  const code = queryParams.get('code');
+  if (code && !access_token) {
+    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+    if (exchangeError) {
+      console.error('[annotated] code exchange failed:', exchangeError);
+      throw exchangeError;
+    }
+    return;
+  }
 
   if (!access_token || !refresh_token) {
+    console.error('[annotated] callback URL:', responseUrl);
     throw new Error('OAuth response missing tokens');
   }
 
