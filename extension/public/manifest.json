@@ -12,6 +12,9 @@
     "tabs",
     "offscreen"
   ],
+  "optional_permissions": [
+    "audioCapture"
+  ],
   "host_permissions": [
     "https://*.supabase.co/*",
     "https://www.youtube.com/*",

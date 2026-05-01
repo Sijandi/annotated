@@ -1,23 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Record Commentary</title>
+<title>Record</title>
 <style>
-  body { background: #09090b; color: #f4f4f5; font-family: system-ui; margin: 0; padding: 20px; min-width: 300px; }
-  button { background: #27272a; color: #f4f4f5; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; width: 100%; margin: 6px 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #18181b; color: #f4f4f5; font-family: system-ui; padding: 12px; }
+  button { background: #27272a; color: #f4f4f5; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; width: 100%; margin: 4px 0; }
   button:hover { background: #3f3f46; }
   #record-btn { background: rgba(239,68,68,0.2); color: #f87171; }
-  #status { text-align: center; margin: 12px 0; font-size: 13px; color: #a1a1aa; }
+  #done-btn { display: none; background: #166534; }
+  #status { text-align: center; font-size: 12px; color: #a1a1aa; margin-bottom: 8px; }
   .recording { color: #f87171; }
-  #timer { font-family: monospace; font-size: 18px; text-align: center; margin: 8px 0; display: none; }
-  #done-btn { display: none; background: #166534; color: #f4f4f5; }
+  .done { color: #4ade80; }
 </style>
 </head>
 <body>
-<div id="status">Click to start recording</div>
-<div id="timer">0:00</div>
-<button id="record-btn">Start Recording</button>
-<button id="done-btn">Use This Recording</button>
+<div id="status">Tap to record</div>
+<button id="record-btn">Start</button>
+<button id="done-btn">Use Recording</button>
 <script src="recorder.js"></script>
 </body>
 </html>
