@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { SourceBadge } from "@/components/SourceBadge";
 import { ClaimForm } from "@/components/ClaimForm";
 import { CommentSection } from "@/components/CommentSection";
+import { FollowButton } from "@/components/FollowButton";
 
 export const dynamic = "force-dynamic";
 
@@ -113,25 +114,28 @@ export default async function AnnotationPage(
       </div>
 
       {/* Author */}
-      <div className="flex items-center gap-3">
-        {profile?.avatar_url ? (
-          <img
-            src={profile.avatar_url}
-            alt=""
-            className="w-10 h-10 rounded-full"
-          />
-        ) : (
-          <div className="w-10 h-10 rounded-full bg-zinc-800" />
-        )}
-        <div>
-          <p className="text-sm font-medium">
-            {profile?.display_name || profile?.username || "Unknown"}
-          </p>
-          <p className="text-xs text-zinc-500">
-            {profile?.username ? `@${profile.username} · ` : ""}
-            {formatTimeAgo(annotation.created_at)}
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {profile?.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt=""
+              className="w-10 h-10 rounded-full"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-zinc-800" />
+          )}
+          <div>
+            <p className="text-sm font-medium">
+              {profile?.display_name || profile?.username || "Unknown"}
+            </p>
+            <p className="text-xs text-zinc-500">
+              {profile?.username ? `@${profile.username} · ` : ""}
+              {formatTimeAgo(annotation.created_at)}
+            </p>
+          </div>
         </div>
+        <FollowButton targetUserId={annotation.user_id} />
       </div>
 
       {/* Commentary */}
