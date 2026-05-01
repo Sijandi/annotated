@@ -32,11 +32,23 @@ function detectSourceType(): PageContext['sourceType'] {
 function getMetadata(): PageContext['metadata'] {
   const get = (selector: string) =>
     document.querySelector(selector)?.getAttribute('content') ?? undefined;
+
+  let image = get('meta[property="og:image"]');
+
+  // For YouTube, construct the actual video thumbnail URL
+  const url = window.location.href;
+  if (url.includes('youtube.com/watch') || url.includes('youtu.be/')) {
+    const match = url.match(/[?&]v=([^&]+)/) || url.match(/youtu\.be\/([^?]+)/);
+    if (match) {
+      image = `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
+    }
+  }
+
   return {
     description: get('meta[property="og:description"]') ?? get('meta[name="description"]'),
     author: get('meta[name="author"]') ?? get('meta[property="article:author"]'),
     publishedDate: get('meta[property="article:published_time"]'),
-    image: get('meta[property="og:image"]'),
+    image,
   };
 }
 
