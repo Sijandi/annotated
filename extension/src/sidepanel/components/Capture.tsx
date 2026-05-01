@@ -74,7 +74,7 @@ export function Capture({ session }: { session: Session }) {
     if (!pageContext) return;
 
     if (pageContext.sourceType === 'youtube') {
-      // Capture video client-side
+      // Capture video+audio via tabCapture
       setStep('recording');
       setError(null);
       try {
@@ -83,24 +83,62 @@ export function Capture({ session }: { session: Session }) {
         });
         if (!tab?.id) throw new Error('No active tab');
 
-        const response = await new Promise<{ dataUrl?: string; error?: string }>((resolve, reject) => {
-          chrome.tabs.sendMessage(tab.id!, { type: 'CAPTURE_VIDEO_CLIP', start: data.start, end: data.end }, (res) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message || 'Content script not responding'));
-              return;
-            }
-            resolve(res);
+        const clipDuration = data.end - data.start;
+
+        // 1. Get tab capture stream ID from background
+        const captureResponse = await new Promise<{ streamId?: string; error?: string }>((resolve) => {
+          chrome.runtime.sendMessage({ type: 'CAPTURE_TAB', tabId: tab.id }, resolve);
+        });
+        if (captureResponse.error || !captureResponse.streamId) {
+          throw new Error(captureResponse.error || 'Failed to capture tab');
+        }
+
+        // 2. Seek video to start time
+        await new Promise<void>((resolve) => {
+          chrome.tabs.sendMessage(tab.id!, { type: 'SEEK_VIDEO', time: data.start }, () => {
+            setTimeout(resolve, 500); // wait for seek
           });
         });
 
-        if (response?.error) throw new Error(response.error);
-        if (!response?.dataUrl) throw new Error('No video data captured. Try refreshing the YouTube page and try again.');
+        // 3. Start recording in offscreen document
+        chrome.storage.local.set({
+          captureCmd: { action: 'start', streamId: captureResponse.streamId, duration: clipDuration }
+        });
 
-        // Convert data URL to Blob
-        const res = await fetch(response.dataUrl);
+        // 4. Play the video
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id! },
+          func: () => { document.querySelector('video')?.play(); },
+        });
+
+        // 5. Wait for capture result
+        const result = await new Promise<any>((resolve) => {
+          const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+            if (changes.captureResult?.newValue) {
+              chrome.storage.local.onChanged.removeListener(listener);
+              chrome.storage.local.remove('captureResult');
+              resolve(changes.captureResult.newValue);
+            }
+          };
+          chrome.storage.local.onChanged.addListener(listener);
+          // Timeout
+          setTimeout(() => {
+            chrome.storage.local.onChanged.removeListener(listener);
+            resolve({ error: 'Capture timed out' });
+          }, (clipDuration + 10) * 1000);
+        });
+
+        if (result.error) throw new Error(result.error);
+        if (!result.dataUrl) throw new Error('No video data captured');
+
+        // 6. Pause the video
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id! },
+          func: () => { document.querySelector('video')?.pause(); },
+        });
+
+        const res = await fetch(result.dataUrl);
         const blob = await res.blob();
-
-        if (blob.size < 1000) throw new Error('Captured clip is too small. The video may not have played correctly.');
 
         setClipState({
           sourceType: 'youtube',

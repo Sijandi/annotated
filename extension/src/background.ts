@@ -6,26 +6,24 @@ chrome.sidePanel
   .catch((error) => console.error('[annotated] sidePanel setup failed:', error));
 
 // Offscreen document management
-async function ensureOffscreen() {
+async function ensureOffscreen(reason: chrome.offscreen.Reason, justification: string) {
   try {
     const contexts = await (chrome.runtime as any).getContexts({
       contextTypes: ['OFFSCREEN_DOCUMENT'],
     });
-    if (contexts.length === 0) {
-      await chrome.offscreen.createDocument({
-        url: 'offscreen.html',
-        reasons: [chrome.offscreen.Reason.USER_MEDIA],
-        justification: 'Recording audio commentary',
-      });
+    if (contexts.length > 0) {
+      await chrome.offscreen.closeDocument();
     }
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: [reason],
+      justification,
+    });
   } catch (e) {
     console.error('[annotated] offscreen error:', e);
     throw e;
   }
 }
-
-// Audio recording state
-let audioResponseCallback: ((data: any) => void) | null = null;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_ACTIVE_TAB') {
@@ -55,9 +53,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Sidebar requests recording
+  // === Audio commentary recording (mic via offscreen) ===
   if (message.type === 'START_RECORDING') {
-    ensureOffscreen()
+    ensureOffscreen(chrome.offscreen.Reason.USER_MEDIA, 'Recording audio commentary')
       .then(() => chrome.storage.local.set({ audioCmd: { action: 'start', ts: Date.now() } }))
       .then(() => sendResponse({ ok: true }))
       .catch(err => sendResponse({ error: err.message }));
@@ -70,9 +68,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  // Offscreen sends back recording data — store in session for sidebar to pick up
   if (message.type === 'AUDIO_RESULT') {
     chrome.storage.local.set({ audioResult: { dataUrl: message.dataUrl, error: message.error } });
+    return false;
+  }
+
+  // === Tab capture for video clipping ===
+  if (message.type === 'CAPTURE_TAB') {
+    const tabId = message.tabId;
+    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
+      if (chrome.runtime.lastError || !streamId) {
+        sendResponse({ error: chrome.runtime.lastError?.message || 'Failed to get stream ID' });
+        return;
+      }
+      sendResponse({ streamId });
+    });
+    return true;
+  }
+
+  if (message.type === 'TAB_CAPTURE_RESULT') {
+    chrome.storage.local.set({ captureResult: { dataUrl: message.dataUrl, error: message.error } });
     return false;
   }
 });

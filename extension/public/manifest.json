@@ -10,10 +10,8 @@
     "storage",
     "identity",
     "tabs",
-    "offscreen"
-  ],
-  "optional_permissions": [
-    "audioCapture"
+    "offscreen",
+    "tabCapture"
   ],
   "host_permissions": [
     "https://*.supabase.co/*",
