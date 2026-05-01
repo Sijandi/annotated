@@ -1,8 +1,12 @@
-// Offscreen document — handles both mic recording and tab capture
+// Offscreen document — handles mic recording and tab capture
 
 // === Mic recording for audio commentary ===
 var micRecorder = null;
 var micChunks = [];
+
+// === Tab capture for video clipping ===
+var tabRecorder = null;
+var tabChunks = [];
 
 chrome.storage.local.onChanged.addListener(function(changes) {
   if (changes.audioCmd) {
@@ -28,9 +32,7 @@ async function startMicRecording() {
     micRecorder.ondataavailable = function(e) { if (e.data.size > 0) micChunks.push(e.data); };
     micRecorder.onstop = function() {
       var blob = new Blob(micChunks, { type: 'audio/webm' });
-      var reader = new FileReader();
-      reader.onloadend = function() { chrome.runtime.sendMessage({ type: 'AUDIO_RESULT', dataUrl: reader.result }); };
-      reader.readAsDataURL(blob);
+      blobToResult(blob, 'AUDIO_RESULT');
       stream.getTracks().forEach(function(t) { t.stop(); });
     };
     micRecorder.start(100);
@@ -43,15 +45,22 @@ function stopMicRecording() {
   if (micRecorder && micRecorder.state !== 'inactive') micRecorder.stop();
 }
 
-// === Tab capture for video clipping ===
-var tabRecorder = null;
-var tabChunks = [];
-
 async function startTabCapture(streamId, duration) {
   try {
+    // Use the stream ID from tabCapture API
     var stream = await navigator.mediaDevices.getUserMedia({
-      audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } },
-      video: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } }
+      audio: {
+        mandatory: {
+          chromeMediaSource: 'tab',
+          chromeMediaSourceId: streamId
+        }
+      },
+      video: {
+        mandatory: {
+          chromeMediaSource: 'tab',
+          chromeMediaSourceId: streamId
+        }
+      }
     });
 
     tabRecorder = new MediaRecorder(stream, {
@@ -63,30 +72,47 @@ async function startTabCapture(streamId, duration) {
     tabRecorder.ondataavailable = function(e) { if (e.data.size > 0) tabChunks.push(e.data); };
     tabRecorder.onstop = function() {
       var blob = new Blob(tabChunks, { type: 'video/webm' });
-      var reader = new FileReader();
-      reader.onloadend = function() {
-        chrome.runtime.sendMessage({ type: 'TAB_CAPTURE_RESULT', dataUrl: reader.result });
-      };
-      reader.onerror = function() {
-        chrome.runtime.sendMessage({ type: 'TAB_CAPTURE_RESULT', error: 'Failed to read video' });
-      };
-      reader.readAsDataURL(blob);
+      blobToResult(blob, 'TAB_CAPTURE_RESULT');
       stream.getTracks().forEach(function(t) { t.stop(); });
+      tabRecorder = null;
+      tabChunks = [];
     };
 
     tabRecorder.start(100);
+    console.log('[offscreen] tab capture started, duration:', duration);
 
-    // Auto-stop after duration + small buffer
+    // Auto-stop after duration
     if (duration) {
       setTimeout(function() {
-        if (tabRecorder && tabRecorder.state !== 'inactive') tabRecorder.stop();
+        stopTabCapture();
       }, (duration + 2) * 1000);
     }
   } catch (err) {
-    chrome.runtime.sendMessage({ type: 'TAB_CAPTURE_RESULT', error: err.message });
+    console.error('[offscreen] tab capture error:', err);
+    chrome.storage.local.set({ captureResult: { error: err.message } });
   }
 }
 
 function stopTabCapture() {
   if (tabRecorder && tabRecorder.state !== 'inactive') tabRecorder.stop();
+}
+
+function blobToResult(blob, messageType) {
+  var reader = new FileReader();
+  reader.onloadend = function() {
+    if (messageType === 'AUDIO_RESULT') {
+      chrome.runtime.sendMessage({ type: messageType, dataUrl: reader.result });
+    } else {
+      // For video, use storage since it can be large
+      chrome.storage.local.set({ captureResult: { dataUrl: reader.result } });
+    }
+  };
+  reader.onerror = function() {
+    if (messageType === 'AUDIO_RESULT') {
+      chrome.runtime.sendMessage({ type: messageType, error: 'Failed to read blob' });
+    } else {
+      chrome.storage.local.set({ captureResult: { error: 'Failed to read video blob' } });
+    }
+  };
+  reader.readAsDataURL(blob);
 }

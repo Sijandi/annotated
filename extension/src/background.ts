@@ -82,13 +82,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // === Tab capture for video clipping ===
   if (message.type === 'CAPTURE_TAB') {
     const tabId = message.tabId;
-    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
-      if (chrome.runtime.lastError || !streamId) {
-        sendResponse({ error: chrome.runtime.lastError?.message || 'Failed to get stream ID' });
-        return;
-      }
-      sendResponse({ streamId });
-    });
+    try {
+      (chrome.tabCapture as any).getMediaStreamId(
+        { targetTabId: tabId },
+        (streamId: string) => {
+          if (chrome.runtime.lastError || !streamId) {
+            sendResponse({ error: chrome.runtime.lastError?.message || 'tabCapture not available' });
+          } else {
+            sendResponse({ streamId });
+          }
+        }
+      );
+    } catch (e: any) {
+      sendResponse({ error: `tabCapture error: ${e.message}` });
+    }
     return true;
   }
 
