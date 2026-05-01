@@ -54,8 +54,14 @@ function getMetadata(): PageContext['metadata'] {
 
 function getPageContext(): PageContext {
   const sourceType = detectSourceType();
-  // Strip tab count prefix like "(111) " and " - YouTube" suffix from title
-  const title = document.title.replace(/^\(\d+\)\s*/, '').replace(/\s*-\s*YouTube$/, '');
+  // Strip tab count prefix and common site suffixes from title
+  const title = document.title
+    .replace(/^\(\d+\)\s*/, '')
+    .replace(/\s*[-|]\s*YouTube$/, '')
+    .replace(/\s*\|\s*Listen Notes$/, '')
+    .replace(/\s*[-|]\s*AP News$/, '')
+    .replace(/\s*[-|]\s*Reuters$/, '')
+    .replace(/\s*[-|]\s*Bloomberg$/, '');
   const ctx: PageContext = {
     url: window.location.href,
     title,

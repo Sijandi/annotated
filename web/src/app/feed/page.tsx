@@ -37,7 +37,12 @@ export default async function FeedPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-      <h1 className="text-2xl font-bold">Feed</h1>
+      <div className="flex items-baseline justify-between">
+        <h1 className="text-2xl font-bold">Feed</h1>
+        {annotations && annotations.length > 0 && (
+          <span className="text-sm text-zinc-500">{annotations.length} annotations</span>
+        )}
+      </div>
 
       {!annotations || annotations.length === 0 ? (
         <div className="text-center py-20 text-zinc-500">
