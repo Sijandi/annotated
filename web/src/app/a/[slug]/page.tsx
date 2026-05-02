@@ -7,6 +7,7 @@ import { CommentSection } from "@/components/CommentSection";
 import { FollowButton } from "@/components/FollowButton";
 import { DeleteButton } from "@/components/DeleteButton";
 import { ShareButton } from "@/components/ShareButton";
+import { LikeButton } from "@/components/LikeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -190,6 +191,7 @@ export default async function AnnotationPage(
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <LikeButton annotationId={annotation.id} />
           <ShareButton slug={slug} />
           <FollowButton targetUserId={annotation.user_id} />
           <DeleteButton annotationId={annotation.id} annotationUserId={annotation.user_id} />
