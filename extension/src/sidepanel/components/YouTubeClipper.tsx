@@ -44,6 +44,8 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
   const [start, setStart] = useState<number | null>(null);
   const [end, setEnd] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [startSet, setStartSet] = useState(false);
+  const [endSet, setEndSet] = useState(false);
 
   const duration = start !== null && end !== null ? end - start : null;
   const isValid = duration !== null && duration > 0 && duration <= 90;
@@ -57,7 +59,10 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
     }
     setError(null);
     setStart(time);
+    setStartSet(true);
+    setEndSet(false);
     if (end !== null && end <= time) setEnd(null);
+    setTimeout(() => setStartSet(false), 1500);
   };
 
   const handleSetEnd = async () => {
@@ -76,6 +81,8 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
       return;
     }
     setEnd(time);
+    setEndSet(true);
+    setTimeout(() => setEndSet(false), 1500);
   };
 
   return (
@@ -106,14 +113,14 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
       <div className="rounded-lg bg-zinc-900 p-3 space-y-2">
         <div className="flex justify-between text-sm">
           <span className="text-zinc-400">Start</span>
-          <span className="text-zinc-100 font-mono">
-            {start !== null ? formatTime(start) : '--:--'}
+          <span className={`font-mono transition-colors ${startSet ? 'text-green-400' : 'text-zinc-100'}`}>
+            {start !== null ? `✓ ${formatTime(start)}` : '--:--'}
           </span>
         </div>
         <div className="flex justify-between text-sm">
           <span className="text-zinc-400">End</span>
-          <span className="text-zinc-100 font-mono">
-            {end !== null ? formatTime(end) : '--:--'}
+          <span className={`font-mono transition-colors ${endSet ? 'text-green-400' : 'text-zinc-100'}`}>
+            {end !== null ? `✓ ${formatTime(end)}` : '--:--'}
           </span>
         </div>
         <div className="flex justify-between text-sm border-t border-zinc-800 pt-2">
