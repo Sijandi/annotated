@@ -19,56 +19,25 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function getVideoTime(): Promise<number | null> {
-  return new Promise((resolve) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-      if (!tab?.id) return resolve(null);
-      chrome.tabs.sendMessage(tab.id, { type: 'GET_VIDEO_TIME' }, (res) => {
-        if (chrome.runtime.lastError) return resolve(null);
-        resolve(res?.time ?? null);
-      });
-    });
-  });
-}
-
-function startCapture(retries = 2): Promise<void> {
+function sendToTab(message: any): Promise<any> {
   return new Promise((resolve, reject) => {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
       if (!tab?.id) return reject(new Error('No active tab'));
-      chrome.tabs.sendMessage(tab.id, { type: 'START_CAPTURE' }, (res) => {
-        if (chrome.runtime.lastError) {
-          if (retries > 0) {
-            // Content script may not be ready — retry after a short delay
-            setTimeout(() => startCapture(retries - 1).then(resolve).catch(reject), 500);
-            return;
-          }
-          return reject(new Error('Content script not ready. Try refreshing the page.'));
-        }
-        if (res?.error) return reject(new Error(res.error));
-        resolve();
-      });
-    });
-  });
-}
-
-function stopCapture(): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-      if (!tab?.id) return reject(new Error('No active tab'));
-      chrome.tabs.sendMessage(tab.id, { type: 'STOP_CAPTURE' }, async (res) => {
+      chrome.tabs.sendMessage(tab.id, message, (res) => {
         if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-        if (res?.error) return reject(new Error(res.error));
-        if (!res?.dataUrl) return reject(new Error('No video data'));
-        try {
-          const r = await fetch(res.dataUrl);
-          const blob = await r.blob();
-          resolve(blob);
-        } catch (e: any) {
-          reject(e);
-        }
+        resolve(res);
       });
     });
   });
+}
+
+async function getVideoTime(): Promise<number | null> {
+  try {
+    const res = await sendToTab({ type: 'GET_VIDEO_TIME' });
+    return res?.time ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
@@ -85,7 +54,7 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
   const handleSetStart = async () => {
     const time = await getVideoTime();
     if (time === null) {
-      setError('Could not read video time. Make sure a YouTube video is playing.');
+      setError('Could not read video time. Make sure a YouTube video is playing and try refreshing the page.');
       return;
     }
     setError(null);
@@ -93,12 +62,15 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
     setEnd(null);
     blobRef.current = null;
 
-    // Start recording in the content script
     try {
-      await startCapture();
+      const res = await sendToTab({ type: 'START_CAPTURE' });
+      if (res?.error) throw new Error(res.error);
       setRecording(true);
     } catch (err: any) {
-      setError(err.message || 'Failed to start recording');
+      // If capture fails but we got the time, the content script is partially working
+      // Set the start time anyway so the user isn't stuck
+      setError('Recording failed to start. Try refreshing the page and setting start again.');
+      setRecording(false);
     }
   };
 
@@ -111,9 +83,10 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
     setError(null);
     if (start !== null && time - start > 90) {
       setError('Clip cannot exceed 90 seconds. Move the video closer to your start point.');
-      // Stop recording anyway
-      try { await stopCapture(); } catch {}
-      setRecording(false);
+      if (recording) {
+        try { await sendToTab({ type: 'STOP_CAPTURE' }); } catch {}
+        setRecording(false);
+      }
       return;
     }
     if (start !== null && time <= start) {
@@ -122,16 +95,17 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
     }
     setEnd(time);
 
-    // Stop recording and get the blob
     if (recording) {
       try {
-        const blob = await stopCapture();
-        blobRef.current = blob;
-        setRecording(false);
+        const res = await sendToTab({ type: 'STOP_CAPTURE' });
+        if (res?.error) throw new Error(res.error);
+        if (!res?.dataUrl) throw new Error('No video data');
+        const r = await fetch(res.dataUrl);
+        blobRef.current = await r.blob();
       } catch (err: any) {
-        setError(err.message || 'Failed to stop recording');
-        setRecording(false);
+        setError(err.message || 'Failed to capture clip');
       }
+      setRecording(false);
     }
   };
 
