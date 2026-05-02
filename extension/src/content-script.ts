@@ -94,30 +94,23 @@ function startContinuousCapture(): string | null {
     const video = document.querySelector('video');
     if (!video) return 'No video element found';
 
-    let stream: MediaStream;
-    try {
-      stream = (video as any).captureStream(30);
-      console.log('[annotated] captureStream OK, audio:', stream.getAudioTracks().length);
-    } catch (e) {
-      console.warn('[annotated] captureStream failed, canvas fallback:', e);
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 1280;
-      canvas.height = video.videoHeight || 720;
-      stream = canvas.captureStream(30);
-      const ctx = canvas.getContext('2d')!;
-      const draw = () => {
-        if (video.paused || video.ended) return;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        requestAnimationFrame(draw);
-      };
-      video.addEventListener('play', draw);
-      draw();
-    }
+    // Use canvas capture — captureStream is blocked by YouTube's SES/Lockdown
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const stream = canvas.captureStream(30);
+    const ctx = canvas.getContext('2d')!;
 
-    const hasAudio = stream.getAudioTracks().length > 0;
-    const mimeType = hasAudio
-      ? (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm')
-      : (MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm');
+    const draw = () => {
+      if (!activeRecorder || activeRecorder.state === 'inactive') return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      requestAnimationFrame(draw);
+    };
+    draw();
+
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
+      ? 'video/webm;codecs=vp8'
+      : 'video/webm';
 
     activeRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_000_000 });
     activeChunks = [];
@@ -125,7 +118,7 @@ function startContinuousCapture(): string | null {
       if (e.data.size > 0) activeChunks.push(e.data);
     };
     activeRecorder.start(100);
-    console.log('[annotated] recording started, mimeType:', mimeType);
+    console.log('[annotated] canvas recording started');
   } catch (e: any) {
     console.error('[annotated] startContinuousCapture error:', e);
     return e.message || 'Failed to start capture';
