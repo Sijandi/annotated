@@ -31,12 +31,19 @@ function getVideoTime(): Promise<number | null> {
   });
 }
 
-function startCapture(): Promise<void> {
+function startCapture(retries = 2): Promise<void> {
   return new Promise((resolve, reject) => {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
       if (!tab?.id) return reject(new Error('No active tab'));
       chrome.tabs.sendMessage(tab.id, { type: 'START_CAPTURE' }, (res) => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (chrome.runtime.lastError) {
+          if (retries > 0) {
+            // Content script may not be ready — retry after a short delay
+            setTimeout(() => startCapture(retries - 1).then(resolve).catch(reject), 500);
+            return;
+          }
+          return reject(new Error('Content script not ready. Try refreshing the page.'));
+        }
         if (res?.error) return reject(new Error(res.error));
         resolve();
       });
