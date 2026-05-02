@@ -60,23 +60,26 @@ export default function Home() {
           </Link>
         </div>
 
-        <div id="install" className="rounded-xl bg-zinc-900 border border-zinc-800 p-6 max-w-lg mx-auto text-left space-y-3">
+        <div id="install" className="rounded-xl bg-zinc-900 border border-zinc-800 p-6 max-w-lg mx-auto text-left space-y-4">
           <p className="text-xs uppercase tracking-wide text-zinc-500">Install the extension</p>
+          <a
+            href="https://github.com/Sijandi/annotated/releases/latest/download/annotated-extension.zip"
+            className="flex items-center justify-center gap-2 w-full rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-3 text-sm font-medium transition"
+          >
+            Download Extension
+          </a>
           <ol className="text-sm text-zinc-400 space-y-2">
             <li className="flex gap-3"><span className="text-zinc-600 font-mono">1.</span>
-              <span>Clone the repo: <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">git clone https://github.com/Sijandi/annotated.git</code></span>
+              <span>Download and <span className="text-zinc-200">unzip</span> the file above</span>
             </li>
             <li className="flex gap-3"><span className="text-zinc-600 font-mono">2.</span>
-              <span>Build: <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">cd extension && npm install && npm run build</code></span>
+              <span>Open <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">chrome://extensions</code> → enable <span className="text-zinc-200">Developer mode</span></span>
             </li>
             <li className="flex gap-3"><span className="text-zinc-600 font-mono">3.</span>
-              <span>Open <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">chrome://extensions</code> → enable Developer mode</span>
+              <span>Click <span className="text-zinc-200">Load unpacked</span> → select the unzipped <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">dist</code> folder</span>
             </li>
             <li className="flex gap-3"><span className="text-zinc-600 font-mono">4.</span>
-              <span>Click <span className="text-zinc-200">Load unpacked</span> → select the <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">extension/dist</code> folder</span>
-            </li>
-            <li className="flex gap-3"><span className="text-zinc-600 font-mono">5.</span>
-              <span>Click the Annotated icon in Chrome → sidebar opens</span>
+              <span>Click the Annotated icon → sidebar opens</span>
             </li>
           </ol>
           <a
