@@ -70,7 +70,7 @@ export function FeedClient({ annotations }: { annotations: Annotation[] }) {
   }), [annotations]);
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+    <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-bold">Feed</h1>
         <span className="text-sm text-zinc-500">{filtered.length} annotations</span>
@@ -128,7 +128,7 @@ export function FeedClient({ annotations }: { annotations: Annotation[] }) {
           {search && <p className="text-sm mt-2">Try a different search term.</p>}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(a => {
             const profile = a.profile;
             const isYoutube = a.source_type === "youtube";

@@ -16,7 +16,15 @@ export function Header() {
             Feed
           </Link>
         </div>
-        <AuthButton />
+        <div className="flex items-center gap-4">
+          <AuthButton />
+          <a
+            href="/#install"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-xs font-medium transition"
+          >
+            Add to Chrome
+          </a>
+        </div>
       </div>
     </header>
   );

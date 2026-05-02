@@ -66,7 +66,7 @@ export default function Home() {
             href="https://github.com/Sijandi/annotated/releases/latest/download/annotated-extension.zip"
             className="flex items-center justify-center gap-2 w-full rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-3 text-sm font-medium transition"
           >
-            Download Extension
+            Add to Chrome — it's free
           </a>
           <ol className="text-sm text-zinc-400 space-y-2">
             <li className="flex gap-3"><span className="text-zinc-600 font-mono">1.</span>
