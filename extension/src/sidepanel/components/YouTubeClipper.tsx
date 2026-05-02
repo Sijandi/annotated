@@ -43,9 +43,7 @@ async function getVideoTime(): Promise<number | null> {
 export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
   const [start, setStart] = useState<number | null>(null);
   const [end, setEnd] = useState<number | null>(null);
-  const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [clipBlob, setClipBlob] = useState<Blob | null>(null);
 
   const duration = start !== null && end !== null ? end - start : null;
   const isValid = duration !== null && duration > 0 && duration <= 90;
@@ -59,19 +57,7 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
     }
     setError(null);
     setStart(time);
-    setEnd(null);
-    setClipBlob(null);
-
-    try {
-      const res = await sendToTab({ type: 'START_CAPTURE' });
-      if (res?.error) throw new Error(res.error);
-      setRecording(true);
-    } catch (err: any) {
-      // If capture fails but we got the time, the content script is partially working
-      // Set the start time anyway so the user isn't stuck
-      setError('Recording failed to start. Try refreshing the page and setting start again.');
-      setRecording(false);
-    }
+    if (end !== null && end <= time) setEnd(null);
   };
 
   const handleSetEnd = async () => {
@@ -83,10 +69,6 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
     setError(null);
     if (start !== null && time - start > 90) {
       setError('Clip cannot exceed 90 seconds. Move the video closer to your start point.');
-      if (recording) {
-        try { await sendToTab({ type: 'STOP_CAPTURE' }); } catch {}
-        setRecording(false);
-      }
       return;
     }
     if (start !== null && time <= start) {
@@ -94,19 +76,6 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
       return;
     }
     setEnd(time);
-
-    if (recording) {
-      try {
-        const res = await sendToTab({ type: 'STOP_CAPTURE' });
-        if (res?.error) throw new Error(res.error);
-        if (!res?.dataUrl) throw new Error('No video data');
-        const r = await fetch(res.dataUrl);
-        setClipBlob(await r.blob());
-      } catch (err: any) {
-        setError(err.message || 'Failed to capture clip');
-      }
-      setRecording(false);
-    }
   };
 
   return (
@@ -122,7 +91,7 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
           className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 px-3 py-2.5 text-sm font-medium transition"
         >
           <Play className="w-4 h-4 text-green-400" />
-          {recording ? 'Restart' : 'Set start'}
+          Set start
         </button>
         <button
           onClick={handleSetEnd}
@@ -133,16 +102,6 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
           Set end
         </button>
       </div>
-
-      {recording && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
-          </span>
-          <span className="text-red-400">Recording clip...</span>
-        </div>
-      )}
 
       <div className="rounded-lg bg-zinc-900 p-3 space-y-2">
         <div className="flex justify-between text-sm">
@@ -181,9 +140,9 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
         </div>
       )}
 
-      {isValid && clipBlob && (
+      {isValid && (
         <button
-          onClick={() => onClipReady({ start: start!, end: end!, videoBlob: clipBlob })}
+          onClick={() => onClipReady({ start: start!, end: end! })}
           className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-medium transition"
         >
           Next: Add Commentary

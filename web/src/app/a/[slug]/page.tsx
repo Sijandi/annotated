@@ -121,16 +121,23 @@ export default async function AnnotationPage(
       {/* Published state */}
       {annotation.status === "published" && (
         <>
-          {annotation.source_type === "youtube" && annotation.media_url && (
-            <div className="rounded-xl overflow-hidden bg-black">
-              <video
-                src={annotation.media_url}
-                controls
-                className="w-full aspect-video"
-                poster={annotation.source_thumbnail_url ?? undefined}
-              />
-            </div>
-          )}
+          {annotation.source_type === "youtube" && (() => {
+            const match = annotation.source_url.match(/[?&]v=([^&]+)/) || annotation.source_url.match(/youtu\.be\/([^?]+)/);
+            const videoId = match?.[1];
+            const startSec = Math.floor(annotation.clip_start_seconds || 0);
+            const endSec = Math.floor(annotation.clip_end_seconds || 0);
+            if (!videoId) return null;
+            return (
+              <div className="rounded-xl overflow-hidden bg-black">
+                <iframe
+                  src={`https://www.youtube.com/embed/${videoId}?start=${startSec}&end=${endSec}&autoplay=0&rel=0`}
+                  className="w-full aspect-video"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            );
+          })()}
 
           {annotation.source_type === "podcast" && annotation.media_url && (
             <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6">

@@ -153,8 +153,9 @@ export function Capture({ session }: { session: Session }) {
         rawClipUrl = rawUrlData.publicUrl;
       }
 
-      // For articles, publish directly. For youtube/podcast, set to processing (worker will transcode).
-      const status = clipState.sourceType === 'article' ? 'published' : 'processing';
+      // Articles and YouTube publish directly (YouTube embeds the player).
+      // Podcasts go to processing (worker clips the audio).
+      const status = clipState.sourceType === 'podcast' ? 'processing' : 'published';
 
       const { error: insertErr } = await supabase.from('annotations').insert({
         user_id: session.user.id,
