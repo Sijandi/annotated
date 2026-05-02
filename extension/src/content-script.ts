@@ -101,13 +101,6 @@ function startContinuousCapture(): string | null {
     const stream = canvas.captureStream(30);
     const ctx = canvas.getContext('2d')!;
 
-    const draw = () => {
-      if (!activeRecorder || activeRecorder.state === 'inactive') return;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      requestAnimationFrame(draw);
-    };
-    draw();
-
     const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
       ? 'video/webm;codecs=vp8'
       : 'video/webm';
@@ -118,7 +111,19 @@ function startContinuousCapture(): string | null {
       if (e.data.size > 0) activeChunks.push(e.data);
     };
     activeRecorder.start(100);
-    console.log('[annotated] canvas recording started');
+
+    // Start draw loop AFTER recorder is active
+    let recording = true;
+    const draw = () => {
+      if (!recording) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      requestAnimationFrame(draw);
+    };
+    draw();
+
+    // Store cleanup ref
+    activeRecorder.addEventListener('stop', () => { recording = false; });
+    console.log('[annotated] canvas recording started, video size:', video.videoWidth, 'x', video.videoHeight);
   } catch (e: any) {
     console.error('[annotated] startContinuousCapture error:', e);
     return e.message || 'Failed to start capture';
