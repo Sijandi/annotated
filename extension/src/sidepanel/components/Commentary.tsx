@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { AudioRecorder } from './AudioRecorder';
 import { Type, Mic } from 'lucide-react';
 
@@ -8,27 +8,15 @@ export interface CommentaryData {
 }
 
 interface Props {
-  clipPreviewBlob?: Blob;
-  sourceType: string;
   onReady: (data: CommentaryData) => void;
   onBack: () => void;
 }
 
-export function Commentary({ clipPreviewBlob, sourceType, onReady, onBack }: Props) {
+export function Commentary({ onReady, onBack }: Props) {
   const [tab, setTab] = useState<'text' | 'audio'>('text');
   const [text, setText] = useState('');
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const previewUrlRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (clipPreviewBlob) {
-      previewUrlRef.current = URL.createObjectURL(clipPreviewBlob);
-    }
-    return () => {
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-    };
-  }, [clipPreviewBlob]);
 
   const canSubmit =
     (tab === 'text' && text.trim().length > 0) ||
@@ -57,17 +45,6 @@ export function Commentary({ clipPreviewBlob, sourceType, onReady, onBack }: Pro
         </button>
         <h3 className="text-sm font-medium text-zinc-200">Add Commentary</h3>
       </div>
-
-      {/* Clip preview */}
-      {previewUrlRef.current && sourceType === 'youtube' && (
-        <div className="rounded-lg overflow-hidden bg-black">
-          <video
-            src={previewUrlRef.current}
-            controls
-            className="w-full aspect-video"
-          />
-        </div>
-      )}
 
       <div className="flex rounded-lg bg-zinc-900 p-1">
         <button

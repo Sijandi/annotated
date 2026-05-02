@@ -267,8 +267,6 @@ export function Capture({ session }: { session: Session }) {
               </div>
             )}
             <Commentary
-              clipPreviewBlob={clipState?.rawVideoBlob}
-              sourceType={clipState?.sourceType || ''}
               onReady={handlePublish}
               onBack={() => setStep('capture')}
             />
