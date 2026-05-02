@@ -89,9 +89,6 @@ export default function Home() {
           </a>
         </div>
 
-        <p className="text-xs text-zinc-600">
-          Built for the <a href="https://annotated.lovable.app/" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-zinc-300 transition">$5K J-Cal bounty</a>. Open source on GitHub.
-        </p>
       </div>
     </div>
   );
