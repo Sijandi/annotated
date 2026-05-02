@@ -128,7 +128,7 @@ export function FeedClient({ annotations }: { annotations: Annotation[] }) {
           {search && <p className="text-sm mt-2">Try a different search term.</p>}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filtered.map(a => {
             const profile = a.profile;
             const isYoutube = a.source_type === "youtube";
