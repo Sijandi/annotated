@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Clock, Play, Square, AlertCircle } from 'lucide-react';
 
 interface ClipData {
@@ -45,7 +45,7 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
   const [end, setEnd] = useState<number | null>(null);
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const blobRef = useRef<Blob | null>(null);
+  const [clipBlob, setClipBlob] = useState<Blob | null>(null);
 
   const duration = start !== null && end !== null ? end - start : null;
   const isValid = duration !== null && duration > 0 && duration <= 90;
@@ -60,7 +60,7 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
     setError(null);
     setStart(time);
     setEnd(null);
-    blobRef.current = null;
+    setClipBlob(null);
 
     try {
       const res = await sendToTab({ type: 'START_CAPTURE' });
@@ -101,7 +101,7 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
         if (res?.error) throw new Error(res.error);
         if (!res?.dataUrl) throw new Error('No video data');
         const r = await fetch(res.dataUrl);
-        blobRef.current = await r.blob();
+        setClipBlob(await r.blob());
       } catch (err: any) {
         setError(err.message || 'Failed to capture clip');
       }
@@ -181,9 +181,9 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
         </div>
       )}
 
-      {isValid && blobRef.current && (
+      {isValid && clipBlob && (
         <button
-          onClick={() => onClipReady({ start: start!, end: end!, videoBlob: blobRef.current! })}
+          onClick={() => onClipReady({ start: start!, end: end!, videoBlob: clipBlob })}
           className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-medium transition"
         >
           Next: Add Commentary
