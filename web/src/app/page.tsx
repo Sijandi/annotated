@@ -4,10 +4,10 @@ export default function Home() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] px-6">
       <div className="max-w-2xl text-center space-y-8">
-        <h1 className="text-5xl font-bold tracking-tight">
+        <h1 className="text-5xl font-bold tracking-tight font-[family-name:var(--font-serif)] italic">
           Annotated
         </h1>
-        <p className="text-xl text-zinc-400 max-w-lg mx-auto">
+        <p className="text-lg text-zinc-400 max-w-lg mx-auto leading-relaxed">
           Clip any moment from YouTube, articles, or podcasts. Add your take. Every annotation gets its own shareable page — always linked to the source.
         </p>
 
@@ -64,7 +64,7 @@ export default function Home() {
           <p className="text-xs uppercase tracking-wide text-zinc-500">Install the extension</p>
           <a
             href="https://github.com/Sijandi/annotated/releases/latest/download/annotated-extension.zip"
-            className="flex items-center justify-center gap-2 w-full rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-3 text-sm font-medium transition"
+            className="flex items-center justify-center gap-2 w-full rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-3 text-sm font-medium transition"
           >
             Add to Chrome — it's free
           </a>
@@ -86,7 +86,7 @@ export default function Home() {
             href="https://github.com/Sijandi/annotated"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-block text-xs text-blue-400 hover:text-blue-300 transition mt-2"
+            className="inline-block text-xs text-violet-400 hover:text-violet-300 transition mt-2"
           >
             View source on GitHub →
           </a>

@@ -107,7 +107,7 @@ export function CommentSection({ annotationId }: { annotationId: string }) {
           <button
             type="submit"
             disabled={submitting || !body.trim()}
-            className="rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-medium transition disabled:opacity-40"
+            className="rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-2 text-sm font-medium transition disabled:opacity-40"
           >
             Post
           </button>

@@ -6,7 +6,7 @@ export function Header() {
     <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm sticky top-0 z-50">
       <div className="max-w-5xl mx-auto flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-6">
-          <Link href="/" className="text-xl font-bold tracking-tight">
+          <Link href="/" className="text-xl font-bold tracking-tight font-[family-name:var(--font-serif)] italic">
             Annotated
           </Link>
           <Link
@@ -20,7 +20,7 @@ export function Header() {
           <AuthButton />
           <a
             href="/#install"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-xs font-medium transition"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-600 hover:bg-violet-500 text-xs font-medium transition"
           >
             Add to Chrome
           </a>
