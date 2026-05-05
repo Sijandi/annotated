@@ -66,7 +66,7 @@ export function FollowButton({ targetUserId }: { targetUserId: string }) {
       className={`text-xs px-3 py-1 rounded-full font-medium transition ${
         isFollowing
           ? "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-          : "bg-violet-600 text-white hover:bg-violet-500"
+          : "bg-zinc-100 text-zinc-900 hover:bg-white"
       }`}
     >
       {isFollowing ? "Following" : "Follow"}

@@ -1,7 +1,7 @@
 const STYLES: Record<string, string> = {
   youtube: "bg-red-500/20 text-red-400",
   article: "bg-blue-500/20 text-blue-400",
-  podcast: "bg-purple-500/20 text-purple-400",
+  podcast: "bg-zinc-500/20 text-zinc-400",
 };
 
 export function SourceBadge({ type }: { type: string }) {

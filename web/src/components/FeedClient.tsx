@@ -90,7 +90,7 @@ export function FeedClient({ annotations }: { annotations: Annotation[] }) {
         <button
           onClick={() => setSort("recent")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition ${
-            sort === "recent" ? "bg-violet-600 text-white" : "bg-zinc-900 text-zinc-400 hover:text-zinc-200"
+            sort === "recent" ? "bg-zinc-200 text-zinc-900" : "bg-zinc-900 text-zinc-400 hover:text-zinc-200"
           }`}
         >
           Recent
@@ -98,7 +98,7 @@ export function FeedClient({ annotations }: { annotations: Annotation[] }) {
         <button
           onClick={() => setSort("trending")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition ${
-            sort === "trending" ? "bg-violet-600 text-white" : "bg-zinc-900 text-zinc-400 hover:text-zinc-200"
+            sort === "trending" ? "bg-zinc-200 text-zinc-900" : "bg-zinc-900 text-zinc-400 hover:text-zinc-200"
           }`}
         >
           Trending
@@ -161,7 +161,7 @@ export function FeedClient({ annotations }: { annotations: Annotation[] }) {
                 {/* Article text preview */}
                 {a.source_type === "article" && a.clip_text && !thumbnailUrl && (
                   <div className="px-5 pt-5">
-                    <blockquote className="border-l-2 border-violet-500 pl-3 text-sm text-zinc-300 italic line-clamp-3">
+                    <blockquote className="border-l-2 border-zinc-500 pl-3 text-sm text-zinc-300 italic line-clamp-3">
                       &ldquo;{a.clip_text}&rdquo;
                     </blockquote>
                   </div>

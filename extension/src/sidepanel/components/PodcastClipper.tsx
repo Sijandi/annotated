@@ -74,7 +74,7 @@ export function PodcastClipper({ title, audioSrc: initialSrc, onClipReady }: Pro
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Headphones className="w-5 h-5 text-purple-400" />
+        <Headphones className="w-5 h-5 text-zinc-400" />
         <h3 className="text-sm font-medium text-zinc-200 line-clamp-2">{title}</h3>
       </div>
 

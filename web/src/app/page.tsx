@@ -40,7 +40,7 @@ export default function Home() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
           <a
             href="#install"
-            className="rounded-full bg-violet-600 hover:bg-violet-500 text-white px-8 py-3 font-medium transition shadow-lg shadow-violet-600/20"
+            className="rounded-full bg-zinc-100 hover:bg-white text-zinc-900 px-8 py-3 font-medium transition shadow-lg shadow-zinc-100/10"
           >
             Get the Chrome Extension
           </a>
@@ -55,10 +55,10 @@ export default function Home() {
         <div className="rounded-2xl bg-zinc-900/40 border border-zinc-800/50 p-6 max-w-lg mx-auto text-left space-y-3">
           <p className="text-xs uppercase tracking-widest text-zinc-600">How it works</p>
           <ol className="text-sm text-zinc-400 space-y-3">
-            <li className="flex gap-3"><span className="text-violet-500 font-mono text-xs">01</span> Install the Chrome extension and sign in with X or Google</li>
-            <li className="flex gap-3"><span className="text-violet-500 font-mono text-xs">02</span> Open the sidebar on any page — it detects what's clippable</li>
-            <li className="flex gap-3"><span className="text-violet-500 font-mono text-xs">03</span> Set your clip, add commentary, hit publish</li>
-            <li className="flex gap-3"><span className="text-violet-500 font-mono text-xs">04</span> Your annotation gets a landing page — share it anywhere</li>
+            <li className="flex gap-3"><span className="text-zinc-500 font-mono text-xs">01</span> Install the Chrome extension and sign in with X or Google</li>
+            <li className="flex gap-3"><span className="text-zinc-500 font-mono text-xs">02</span> Open the sidebar on any page — it detects what's clippable</li>
+            <li className="flex gap-3"><span className="text-zinc-500 font-mono text-xs">03</span> Set your clip, add commentary, hit publish</li>
+            <li className="flex gap-3"><span className="text-zinc-500 font-mono text-xs">04</span> Your annotation gets a landing page — share it anywhere</li>
           </ol>
         </div>
 
@@ -66,21 +66,21 @@ export default function Home() {
           <p className="text-xs uppercase tracking-widest text-zinc-600">Install the extension</p>
           <a
             href="https://github.com/Sijandi/annotated/releases/latest/download/annotated-extension.zip"
-            className="flex items-center justify-center gap-2 w-full rounded-full bg-violet-600 hover:bg-violet-500 px-4 py-3 text-sm font-medium transition shadow-lg shadow-violet-600/20"
+            className="flex items-center justify-center gap-2 w-full rounded-full bg-zinc-100 hover:bg-white text-zinc-900 px-4 py-3 text-sm font-medium transition shadow-lg shadow-zinc-100/10"
           >
             Add to Chrome — it's free
           </a>
           <ol className="text-sm text-zinc-400 space-y-2">
-            <li className="flex gap-3"><span className="text-violet-500 font-mono text-xs">01</span>
+            <li className="flex gap-3"><span className="text-zinc-500 font-mono text-xs">01</span>
               <span>Download and <span className="text-zinc-200">unzip</span> the file above</span>
             </li>
-            <li className="flex gap-3"><span className="text-violet-500 font-mono text-xs">02</span>
+            <li className="flex gap-3"><span className="text-zinc-500 font-mono text-xs">02</span>
               <span>Open <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">chrome://extensions</code> → enable <span className="text-zinc-200">Developer mode</span></span>
             </li>
-            <li className="flex gap-3"><span className="text-violet-500 font-mono text-xs">03</span>
+            <li className="flex gap-3"><span className="text-zinc-500 font-mono text-xs">03</span>
               <span>Click <span className="text-zinc-200">Load unpacked</span> → select the unzipped <code className="text-xs bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">dist</code> folder</span>
             </li>
-            <li className="flex gap-3"><span className="text-violet-500 font-mono text-xs">04</span>
+            <li className="flex gap-3"><span className="text-zinc-500 font-mono text-xs">04</span>
               <span>Click the Annotated icon → sidebar opens</span>
             </li>
           </ol>
@@ -88,7 +88,7 @@ export default function Home() {
             href="https://github.com/Sijandi/annotated"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-block text-xs text-violet-400 hover:text-violet-300 transition mt-2"
+            className="inline-block text-xs text-zinc-400 hover:text-zinc-300 transition mt-2"
           >
             View source on GitHub →
           </a>

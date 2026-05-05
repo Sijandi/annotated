@@ -147,7 +147,7 @@ export default async function AnnotationPage(
           )}
 
           {annotation.source_type === "article" && annotation.clip_text && (
-            <blockquote className="border-l-4 border-violet-500 pl-4 py-2 text-lg text-zinc-300 italic bg-zinc-900/50 rounded-r-xl p-6">
+            <blockquote className="border-l-4 border-zinc-500 pl-4 py-2 text-lg text-zinc-300 italic bg-zinc-900/50 rounded-r-xl p-6">
               &ldquo;{annotation.clip_text}&rdquo;
             </blockquote>
           )}
@@ -161,7 +161,7 @@ export default async function AnnotationPage(
           href={annotation.source_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm text-violet-400 hover:text-violet-300 transition truncate"
+          className="text-sm text-zinc-400 hover:text-zinc-300 transition truncate"
         >
           {annotation.source_title || annotation.source_url}
           <span className="ml-1">↗</span>

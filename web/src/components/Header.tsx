@@ -20,7 +20,7 @@ export function Header() {
           <AuthButton />
           <a
             href="/#install"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-600 hover:bg-violet-500 text-xs font-medium transition"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-100 hover:bg-white text-zinc-900 text-xs font-medium transition"
           >
             Add to Chrome
           </a>
