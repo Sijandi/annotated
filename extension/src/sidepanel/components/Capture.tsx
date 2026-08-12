@@ -19,6 +19,17 @@ interface PageContext {
   audioSrc?: string;
 }
 
+// Mirrors PageMetadata in content-script.ts — stored as source_metadata jsonb
+interface SourceMetadata {
+  title?: string;
+  siteName?: string;
+  author?: string;
+  publishedTime?: string;
+  image?: string;
+  favicon?: string;
+  description?: string;
+}
+
 interface ClipState {
   sourceType: 'youtube' | 'article' | 'podcast';
   sourceUrl: string;
@@ -35,6 +46,26 @@ interface ClipState {
 
 type Step = 'capture' | 'commentary' | 'publishing' | 'done';
 
+// Best-effort page metadata fetch from the source tab. Resolves null (never
+// rejects) if the tab is gone, the content script can't respond, or the page
+// yielded nothing useful.
+function getPageMetadata(tabId: number): Promise<SourceMetadata | null> {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tabId, { type: 'GET_PAGE_METADATA' }, (response) => {
+        if (chrome.runtime.lastError || !response) {
+          resolve(null);
+          return;
+        }
+        const metadata = response as SourceMetadata;
+        resolve(Object.values(metadata).some(Boolean) ? metadata : null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 function generateSlug(title: string): string {
   const base = title
     .toLowerCase()
@@ -47,6 +78,7 @@ function generateSlug(title: string): string {
 
 export function Capture({ session }: { session: Session }) {
   const [pageContext, setPageContext] = useState<PageContext | null>(null);
+  const [sourceTabId, setSourceTabId] = useState<number | null>(null);
   const [step, setStep] = useState<Step>('capture');
   const [clipState, setClipState] = useState<ClipState | null>(null);
   const [publishedSlug, setPublishedSlug] = useState<string | null>(null);
@@ -63,6 +95,7 @@ export function Capture({ session }: { session: Session }) {
           return;
         }
         setPageContext(response);
+        setSourceTabId(tab.id ?? null);
       });
     });
   }, []);
@@ -177,6 +210,9 @@ export function Capture({ session }: { session: Session }) {
           ? 'published'
           : 'processing';
 
+      // Page metadata for source attribution — non-fatal if unavailable
+      const sourceMetadata = sourceTabId != null ? await getPageMetadata(sourceTabId) : null;
+
       const { error: insertErr } = await supabase.from('annotations').insert({
         user_id: session.user.id,
         source_url: clipState.sourceUrl,
@@ -190,6 +226,7 @@ export function Capture({ session }: { session: Session }) {
         commentary_text: commentary.text,
         commentary_audio_url: commentaryAudioUrl,
         media_url: rawClipUrl || clipState.audioSrc || null,
+        source_metadata: sourceMetadata,
         status,
         slug,
       });

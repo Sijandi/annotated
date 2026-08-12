@@ -18,7 +18,7 @@ export default async function FeedPage() {
 
   const { data: annotations } = await supabase
     .from("annotations")
-    .select("id, slug, source_type, source_title, source_url, source_thumbnail_url, commentary_text, clip_text, created_at, user_id, clip_start_seconds, clip_end_seconds")
+    .select("id, slug, source_type, source_title, source_url, source_thumbnail_url, source_metadata, commentary_text, clip_text, created_at, user_id, clip_start_seconds, clip_end_seconds")
     .eq("status", "published")
     .order("created_at", { ascending: false })
     .limit(50);

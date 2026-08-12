@@ -11,6 +11,19 @@ import { LikeButton } from "@/components/LikeButton";
 
 export const dynamic = "force-dynamic";
 
+// Shape of the source_metadata jsonb column, captured by the extension
+// content script (see extension/src/content-script.ts). All fields optional;
+// legacy rows are null.
+interface SourceMetadata {
+  title?: string;
+  siteName?: string;
+  author?: string;
+  publishedTime?: string;
+  image?: string;
+  favicon?: string;
+  description?: string;
+}
+
 function getSupabaseForMeta() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -62,6 +75,16 @@ function getSupabase() {
   );
 }
 
+function formatPublishedDate(dateStr: string): string | null {
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function formatTimeAgo(dateStr: string): string {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (seconds < 60) return "just now";
@@ -89,6 +112,11 @@ export default async function AnnotationPage(
     .single();
 
   if (error || !annotation) notFound();
+
+  const sourceMeta: SourceMetadata | null = annotation.source_metadata ?? null;
+  const publishedDate = sourceMeta?.publishedTime
+    ? formatPublishedDate(sourceMeta.publishedTime)
+    : null;
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -154,19 +182,57 @@ export default async function AnnotationPage(
         </>
       )}
 
-      {/* Source link */}
-      <div className="flex items-center gap-3">
-        <SourceBadge type={annotation.source_type} />
+      {/* Source attribution */}
+      {sourceMeta ? (
         <a
           href={annotation.source_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm text-zinc-400 hover:text-zinc-300 transition truncate"
+          className="flex items-center gap-4 rounded-xl bg-zinc-900 border border-zinc-800 p-4 hover:border-zinc-700 transition"
         >
-          {annotation.source_title || annotation.source_url}
-          <span className="ml-1">↗</span>
+          {sourceMeta.image ? (
+            <img
+              src={sourceMeta.image}
+              alt=""
+              className="w-20 h-14 rounded-lg object-cover shrink-0"
+            />
+          ) : sourceMeta.favicon ? (
+            <img src={sourceMeta.favicon} alt="" className="w-8 h-8 rounded shrink-0" />
+          ) : null}
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-center gap-2">
+              <SourceBadge type={annotation.source_type} />
+              {sourceMeta.siteName && (
+                <span className="text-xs text-zinc-500 truncate">
+                  {sourceMeta.siteName}
+                </span>
+              )}
+            </div>
+            <p className="text-sm font-medium text-zinc-200 line-clamp-2">
+              {sourceMeta.title || annotation.source_title || annotation.source_url}
+              <span className="ml-1 text-zinc-500">↗</span>
+            </p>
+            {(sourceMeta.author || publishedDate) && (
+              <p className="text-xs text-zinc-500 truncate">
+                {[sourceMeta.author, publishedDate].filter(Boolean).join(" · ")}
+              </p>
+            )}
+          </div>
         </a>
-      </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <SourceBadge type={annotation.source_type} />
+          <a
+            href={annotation.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-zinc-400 hover:text-zinc-300 transition truncate"
+          >
+            {annotation.source_title || annotation.source_url}
+            <span className="ml-1">↗</span>
+          </a>
+        </div>
+      )}
 
       {/* Author */}
       <div className="flex items-center justify-between">

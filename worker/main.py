@@ -79,7 +79,7 @@ def process_clip(annotation_id: str, source_url: str, source_type: str, start: f
 
             if source_type == "youtube":
                 output_path = tmppath / f"{annotation_id}.mp4"
-                _process_youtube(annotation_id, output_path)
+                _process_youtube(annotation_id, output_path, duration)
                 storage_path = f"{annotation_id}.mp4"
                 content_type = "video/mp4"
             elif source_type == "podcast":
@@ -125,7 +125,7 @@ def process_clip(annotation_id: str, source_url: str, source_type: str, start: f
         }).eq("id", annotation_id).execute()
 
 
-def _process_youtube(annotation_id: str, output_path: Path):
+def _process_youtube(annotation_id: str, output_path: Path, duration: float = None):
     """Download raw clip from Supabase Storage, crop to the player (if crop
     metadata was uploaded alongside it), downscale to 240p mp4."""
     tmpdir = output_path.parent
@@ -147,7 +147,7 @@ def _process_youtube(annotation_id: str, output_path: Path):
     print(f"[worker] downloaded raw clip: {raw_path.stat().st_size} bytes")
 
     # Crop to player (when the extension uploaded crop metadata), then downscale
-    transcode_youtube(raw_path, _fetch_crop_info(raw_url), output_path)
+    transcode_youtube(raw_path, _fetch_crop_info(raw_url), output_path, duration)
 
 
 def _fetch_crop_info(raw_url: str) -> dict | None:

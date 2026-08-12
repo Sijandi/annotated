@@ -85,6 +85,71 @@ function getPageContext(): PageContext {
   return ctx;
 }
 
+// Structured page metadata for source attribution, stored on the annotation
+// row (source_metadata jsonb). All fields optional strings.
+interface PageMetadata {
+  title?: string;
+  siteName?: string;
+  author?: string;
+  publishedTime?: string;
+  image?: string;
+  favicon?: string;
+  description?: string;
+}
+
+function collectPageMetadata(): PageMetadata {
+  const cap = (value: string | null | undefined, max = 300): string | undefined => {
+    const trimmed = value?.trim();
+    if (!trimmed) return undefined;
+    return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
+  };
+
+  // First non-empty content attribute among the given selectors
+  const meta = (...selectors: string[]): string | undefined => {
+    for (const selector of selectors) {
+      const content = document.querySelector(selector)?.getAttribute('content');
+      if (content?.trim()) return content;
+    }
+    return undefined;
+  };
+
+  // Resolve relative URLs (favicons, og:image paths) against the page.
+  // Truncating a URL breaks it, so over-long URLs are dropped instead.
+  const url = (href: string | null | undefined): string | undefined => {
+    if (!href?.trim()) return undefined;
+    try {
+      const absolute = new URL(href, window.location.href).href;
+      return absolute.length <= 600 ? absolute : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const faviconHref = document
+    .querySelector('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]')
+    ?.getAttribute('href');
+
+  return {
+    title: cap(meta('meta[property="og:title"]', 'meta[name="twitter:title"]') ?? document.title),
+    siteName: cap(
+      meta('meta[property="og:site_name"]', 'meta[name="application-name"]') ??
+        window.location.hostname.replace(/^www\./, '')
+    ),
+    author: cap(
+      meta('meta[name="author"]', 'meta[property="article:author"]', 'meta[name="twitter:creator"]')
+    ),
+    publishedTime: cap(
+      meta('meta[property="article:published_time"]', 'meta[itemprop="datePublished"]', 'meta[name="date"]')
+    ),
+    image: url(meta('meta[property="og:image"]', 'meta[name="twitter:image"]')),
+    favicon: url(faviconHref ?? '/favicon.ico'),
+    description: cap(
+      meta('meta[property="og:description"]', 'meta[name="twitter:description"]', 'meta[name="description"]'),
+      500
+    ),
+  };
+}
+
 // Geometry of the page's video element at capture start, used by the worker
 // to crop the full-tab recording down to just the player.
 interface CaptureCrop {
@@ -208,6 +273,11 @@ function stopContinuousCapture(): Promise<string> {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'GET_PAGE_CONTEXT') {
     sendResponse(getPageContext());
+    return false;
+  }
+
+  if (message.type === 'GET_PAGE_METADATA') {
+    sendResponse(collectPageMetadata());
     return false;
   }
 

@@ -6,6 +6,18 @@ import { SourceBadge } from "./SourceBadge";
 import { LikeButton } from "./LikeButton";
 import { timeAgo } from "@/lib/time";
 
+// Shape of the source_metadata jsonb column, captured by the extension
+// content script. All fields optional; legacy rows are null.
+interface SourceMetadata {
+  title?: string;
+  siteName?: string;
+  author?: string;
+  publishedTime?: string;
+  image?: string;
+  favicon?: string;
+  description?: string;
+}
+
 interface Annotation {
   id: string;
   slug: string;
@@ -13,6 +25,7 @@ interface Annotation {
   source_title: string | null;
   source_url: string;
   source_thumbnail_url: string | null;
+  source_metadata: SourceMetadata | null;
   commentary_text: string | null;
   clip_text: string | null;
   created_at: string;
@@ -184,11 +197,23 @@ export function FeedClient({ annotations }: { annotations: Annotation[] }) {
                     <SourceBadge type={a.source_type} />
                   </div>
 
-                  {/* Title */}
-                  {a.source_title && (
+                  {/* Title + source site */}
+                  {(a.source_title || a.source_metadata?.title) && (
                     <h3 className="text-base font-medium text-zinc-200 line-clamp-2">
-                      {a.source_title}
+                      {a.source_title || a.source_metadata?.title}
                     </h3>
+                  )}
+                  {a.source_metadata?.siteName && (
+                    <p className="flex items-center gap-1.5 text-xs text-zinc-500">
+                      {a.source_metadata.favicon && (
+                        <img
+                          src={a.source_metadata.favicon}
+                          alt=""
+                          className="w-3.5 h-3.5 rounded-sm"
+                        />
+                      )}
+                      <span className="truncate">{a.source_metadata.siteName}</span>
+                    </p>
                   )}
 
                   {/* Commentary preview */}

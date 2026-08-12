@@ -97,7 +97,8 @@ def process(job: dict) -> None:
             raw_path = tmppath / "raw.webm"
             download(raw_url, raw_path)
             out = tmppath / f"{jid}.mp4"
-            transcode_youtube(raw_path, fetch_crop_info(raw_url), out)
+            transcode_youtube(raw_path, fetch_crop_info(raw_url), out,
+                              duration=(end - start) if end > start else None)
             ext = "mp4"
         elif source_type == "podcast":
             audio_url = job.get("media_url")

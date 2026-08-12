@@ -68,12 +68,18 @@ def build_video_filter(crop_info: Optional[dict], raw_path: Path) -> str:
         return scale
 
 
-def transcode_youtube(raw_path: Path, crop_info: Optional[dict], output_path: Path) -> None:
-    """Raw tab-capture webm → cropped, 240p H.264 mp4 with AAC audio."""
+def transcode_youtube(raw_path: Path, crop_info: Optional[dict], output_path: Path,
+                      duration: Optional[float] = None) -> None:
+    """Raw tab-capture webm → cropped, 240p H.264 mp4 with AAC audio.
+
+    The recording runs ~0.5s past the marked clip end (tail tolerance), so the
+    output is clamped to the exact requested duration — a user who marks 90s
+    gets 90.0s, never 90.5s."""
     vf = build_video_filter(crop_info, raw_path)
-    cmd = [
-        FFMPEG, "-y",
-        "-i", str(raw_path),
+    cmd = [FFMPEG, "-y", "-i", str(raw_path)]
+    if duration and duration > 0:
+        cmd += ["-t", f"{min(duration, MAX_CLIP_SECONDS):.3f}"]
+    cmd += [
         "-vf", vf,
         "-c:v", "libx264", "-preset", "fast", "-crf", "28",
         "-c:a", "aac", "-b:a", "96k",
