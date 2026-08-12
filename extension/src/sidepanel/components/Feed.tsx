@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { RefreshCw, UserPlus, UserMinus, ExternalLink, Trash2, MessageCircle } from 'lucide-react';
+import { RefreshCw, UserPlus, UserMinus, ExternalLink, Trash2, MessageCircle, FolderPlus } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { Comments } from './Comments';
+import { CollectionPicker } from './CollectionPicker';
 
 interface Annotation {
   id: string;
@@ -12,6 +13,7 @@ interface Annotation {
   source_thumbnail_url: string | null;
   created_at: string;
   user_id: string;
+  visibility: 'public' | 'unlisted';
   profiles: {
     id: string;
     username: string;
@@ -37,15 +39,17 @@ const TYPE_COLORS: Record<string, string> = {
   podcast: 'bg-zinc-500/20 text-zinc-400',
 };
 
-type Filter = 'all' | 'following';
+type Filter = 'all' | 'following' | 'mine';
 
 export function Feed({ session }: { session: Session }) {
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [mineAnnotations, setMineAnnotations] = useState<Annotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [following, setFollowing] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>('all');
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+  const [collectionPickerFor, setCollectionPickerFor] = useState<string | null>(null);
 
   const webAppUrl = import.meta.env.VITE_WEB_APP_URL || '';
 
@@ -76,17 +80,34 @@ export function Feed({ session }: { session: Session }) {
 
   const loadFeed = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('annotations')
-      .select('id, slug, source_type, source_title, source_thumbnail_url, created_at, user_id, profiles(id, username, display_name, avatar_url)')
-      .eq('status', 'published')
-      .order('created_at', { ascending: false })
-      .limit(30);
-    const feed = (data as any) ?? [];
+    const selectCols =
+      'id, slug, source_type, source_title, source_thumbnail_url, created_at, user_id, visibility, profiles(id, username, display_name, avatar_url)';
+    // Public feed only shows public annotations; the Mine tab shows the user's
+    // own published annotations regardless of visibility (RLS allows own rows).
+    const [{ data: publicData }, { data: mineData }] = await Promise.all([
+      supabase
+        .from('annotations')
+        .select(selectCols)
+        .eq('status', 'published')
+        .eq('visibility', 'public')
+        .order('created_at', { ascending: false })
+        .limit(30),
+      supabase
+        .from('annotations')
+        .select(selectCols)
+        .eq('status', 'published')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(30),
+    ]);
+    const feed = (publicData as any) ?? [];
+    const mine = (mineData as any) ?? [];
     setAnnotations(feed);
+    setMineAnnotations(mine);
     setLoading(false);
-    loadCommentCounts(feed.map((a: Annotation) => a.id));
-  }, [loadCommentCounts]);
+    const ids = new Set<string>([...feed, ...mine].map((a: Annotation) => a.id));
+    loadCommentCounts([...ids]);
+  }, [loadCommentCounts, session.user.id]);
 
   useEffect(() => {
     loadFeed();
@@ -123,6 +144,11 @@ export function Feed({ session }: { session: Session }) {
     if (!confirm('Delete this annotation?')) return;
     await supabase.from('annotations').delete().eq('id', id);
     setAnnotations(prev => prev.filter(a => a.id !== id));
+    setMineAnnotations(prev => prev.filter(a => a.id !== id));
+  };
+
+  const toggleCollectionPicker = (id: string) => {
+    setCollectionPickerFor((prev) => (prev === id ? null : id));
   };
 
   const toggleComments = (id: string) => {
@@ -149,9 +175,12 @@ export function Feed({ session }: { session: Session }) {
     chrome.tabs.create({ url });
   };
 
-  const displayed = filter === 'following'
-    ? annotations.filter(a => following.has(a.user_id) || a.user_id === session.user.id)
-    : annotations;
+  const displayed =
+    filter === 'mine'
+      ? mineAnnotations
+      : filter === 'following'
+        ? annotations.filter(a => following.has(a.user_id) || a.user_id === session.user.id)
+        : annotations;
 
   if (loading) {
     return (
@@ -165,22 +194,19 @@ export function Feed({ session }: { session: Session }) {
     <div className="space-y-3">
       {/* Filter tabs */}
       <div className="flex rounded-lg bg-zinc-900 p-1">
-        <button
-          onClick={() => setFilter('all')}
-          className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${
-            filter === 'all' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          All
-        </button>
-        <button
-          onClick={() => setFilter('following')}
-          className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${
-            filter === 'following' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          Following
-        </button>
+        {([['all', 'All'], ['following', 'Following'], ['mine', 'Mine']] as [Filter, string][]).map(
+          ([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setFilter(value)}
+              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                filter === value ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {label}
+            </button>
+          )
+        )}
       </div>
 
       {/* Refresh button */}
@@ -194,7 +220,12 @@ export function Feed({ session }: { session: Session }) {
 
       {displayed.length === 0 ? (
         <div className="text-center py-12 text-sm text-zinc-500">
-          {filter === 'following' ? (
+          {filter === 'mine' ? (
+            <>
+              <p>You haven't published anything yet.</p>
+              <p className="mt-1 text-xs">Clip something from the Capture tab.</p>
+            </>
+          ) : filter === 'following' ? (
             <>
               <p>No annotations from people you follow yet.</p>
               <p className="mt-1 text-xs">Follow annotators from the All tab.</p>
@@ -248,6 +279,11 @@ export function Feed({ session }: { session: Session }) {
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {a.visibility === 'unlisted' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-zinc-800 text-zinc-500">
+                      unlisted
+                    </span>
+                  )}
                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${TYPE_COLORS[a.source_type] ?? 'bg-zinc-700 text-zinc-400'}`}>
                     {a.source_type}
                   </span>
@@ -277,18 +313,40 @@ export function Feed({ session }: { session: Session }) {
                   </button>
                 </div>
                 {isOwnPost && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteAnnotation(a.id);
-                    }}
-                    className="p-1 hover:bg-zinc-700 rounded transition"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3 h-3 text-zinc-600 hover:text-red-400" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCollectionPicker(a.id);
+                      }}
+                      className="p-1 hover:bg-zinc-700 rounded transition"
+                      title="Add to collection"
+                    >
+                      <FolderPlus
+                        className={`w-3 h-3 ${
+                          collectionPickerFor === a.id ? 'text-blue-400' : 'text-zinc-600 hover:text-blue-400'
+                        }`}
+                      />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteAnnotation(a.id);
+                      }}
+                      className="p-1 hover:bg-zinc-700 rounded transition"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3 h-3 text-zinc-600 hover:text-red-400" />
+                    </button>
+                  </div>
                 )}
               </div>
+
+              {isOwnPost && collectionPickerFor === a.id && (
+                <div className="cursor-default" onClick={(e) => e.stopPropagation()}>
+                  <CollectionPicker session={session} annotationId={a.id} />
+                </div>
+              )}
 
               {expandedComments.has(a.id) && (
                 <div className="cursor-default" onClick={(e) => e.stopPropagation()}>

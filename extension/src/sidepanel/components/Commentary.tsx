@@ -10,9 +10,11 @@ export interface CommentaryData {
 interface Props {
   onReady: (data: CommentaryData) => void;
   onBack: () => void;
+  /** Chosen publish visibility — only affects the confirmation copy. */
+  visibility?: 'public' | 'unlisted';
 }
 
-export function Commentary({ onReady, onBack }: Props) {
+export function Commentary({ onReady, onBack, visibility = 'public' }: Props) {
   const [tab, setTab] = useState<'text' | 'audio'>('text');
   const [text, setText] = useState('');
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -88,7 +90,11 @@ export function Commentary({ onReady, onBack }: Props) {
 
       {confirming ? (
         <div className="space-y-2">
-          <p className="text-xs text-zinc-400 text-center">Publish this annotation? This will be public.</p>
+          <p className="text-xs text-zinc-400 text-center">
+            {visibility === 'unlisted'
+              ? 'Publish this annotation? It will be unlisted — only people with the link can view it.'
+              : 'Publish this annotation? This will be public.'}
+          </p>
           <div className="flex gap-3">
             <button
               onClick={() => setConfirming(false)}

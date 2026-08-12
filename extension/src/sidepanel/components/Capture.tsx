@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
-import { LogOut, Loader2, ExternalLink } from 'lucide-react';
+import { LogOut, Loader2, ExternalLink, Globe, Lock, Link as LinkIcon, Check, FolderPlus } from 'lucide-react';
 import { YouTubeClipper, type CropInfo } from './YouTubeClipper';
 import { ArticleHighlighter } from './ArticleHighlighter';
 import { PodcastClipper } from './PodcastClipper';
 import { Commentary, type CommentaryData } from './Commentary';
+import { CollectionPicker } from './CollectionPicker';
 import { getTargetTab } from '../../lib/targetTab';
+import { generateSlug } from '../../lib/slug';
 
 interface PageContext {
   url: string;
@@ -67,15 +69,10 @@ function getPageMetadata(tabId: number): Promise<SourceMetadata | null> {
   });
 }
 
-function generateSlug(title: string): string {
-  const base = title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .slice(0, 40);
-  const rand = Math.random().toString(36).slice(2, 6);
-  return `${base}-${rand}`;
-}
+type Visibility = 'public' | 'unlisted';
+
+// chrome.storage.local key remembering the last-used publish visibility
+const VISIBILITY_STORAGE_KEY = 'publishVisibility';
 
 export function Capture({ session }: { session: Session }) {
   const [pageContext, setPageContext] = useState<PageContext | null>(null);
@@ -83,9 +80,26 @@ export function Capture({ session }: { session: Session }) {
   const [step, setStep] = useState<Step>('capture');
   const [clipState, setClipState] = useState<ClipState | null>(null);
   const [publishedSlug, setPublishedSlug] = useState<string | null>(null);
+  const [publishedId, setPublishedId] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<Visibility>('public');
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [showCollections, setShowCollections] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const webAppUrl = import.meta.env.VITE_WEB_APP_URL || '';
+
+  // Restore the last-used visibility choice
+  useEffect(() => {
+    chrome.storage.local.get(VISIBILITY_STORAGE_KEY, (result) => {
+      const stored = result[VISIBILITY_STORAGE_KEY];
+      if (stored === 'public' || stored === 'unlisted') setVisibility(stored);
+    });
+  }, []);
+
+  const chooseVisibility = (v: Visibility) => {
+    setVisibility(v);
+    chrome.storage.local.set({ [VISIBILITY_STORAGE_KEY]: v });
+  };
 
   useEffect(() => {
     getTargetTab()
@@ -216,27 +230,33 @@ export function Capture({ session }: { session: Session }) {
       // Page metadata for source attribution — non-fatal if unavailable
       const sourceMetadata = sourceTabId != null ? await getPageMetadata(sourceTabId) : null;
 
-      const { error: insertErr } = await supabase.from('annotations').insert({
-        user_id: session.user.id,
-        source_url: clipState.sourceUrl,
-        source_type: clipState.sourceType,
-        source_title: clipState.sourceTitle,
-        source_author: clipState.sourceAuthor,
-        source_thumbnail_url: clipState.sourceThumbnail,
-        clip_start_seconds: clipState.clipStart,
-        clip_end_seconds: clipState.clipEnd,
-        clip_text: clipState.clipText,
-        commentary_text: commentary.text,
-        commentary_audio_url: commentaryAudioUrl,
-        media_url: rawClipUrl || clipState.audioSrc || null,
-        source_metadata: sourceMetadata,
-        status,
-        slug,
-      });
+      const { data: inserted, error: insertErr } = await supabase
+        .from('annotations')
+        .insert({
+          user_id: session.user.id,
+          source_url: clipState.sourceUrl,
+          source_type: clipState.sourceType,
+          source_title: clipState.sourceTitle,
+          source_author: clipState.sourceAuthor,
+          source_thumbnail_url: clipState.sourceThumbnail,
+          clip_start_seconds: clipState.clipStart,
+          clip_end_seconds: clipState.clipEnd,
+          clip_text: clipState.clipText,
+          commentary_text: commentary.text,
+          commentary_audio_url: commentaryAudioUrl,
+          media_url: rawClipUrl || clipState.audioSrc || null,
+          source_metadata: sourceMetadata,
+          status,
+          visibility,
+          slug,
+        })
+        .select('id')
+        .single();
 
       if (insertErr) throw insertErr;
 
       setPublishedSlug(slug);
+      setPublishedId(inserted?.id ?? null);
       setStep('done');
 
       // Open landing page
@@ -253,7 +273,21 @@ export function Capture({ session }: { session: Session }) {
     setStep('capture');
     setClipState(null);
     setPublishedSlug(null);
+    setPublishedId(null);
+    setLinkCopied(false);
+    setShowCollections(false);
     setError(null);
+  };
+
+  const copyPublishedLink = async () => {
+    if (!webAppUrl || !publishedSlug) return;
+    try {
+      await navigator.clipboard.writeText(`${webAppUrl}/a/${publishedSlug}`);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1500);
+    } catch {
+      // Clipboard can fail if the panel loses focus — the URL is still visible to copy manually.
+    }
   };
 
   return (
@@ -327,7 +361,39 @@ export function Capture({ session }: { session: Session }) {
                 {error}
               </div>
             )}
+
+            {/* Visibility picker — last choice persists across sessions */}
+            <div className="mb-4 space-y-1.5">
+              <div className="text-xs uppercase tracking-wide text-zinc-500">Visibility</div>
+              <div className="flex rounded-lg bg-zinc-900 p-1">
+                <button
+                  onClick={() => chooseVisibility('public')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    visibility === 'public' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  Public
+                </button>
+                <button
+                  onClick={() => chooseVisibility('unlisted')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    visibility === 'unlisted' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  Unlisted
+                </button>
+              </div>
+              <p className="text-xs text-zinc-600">
+                {visibility === 'public'
+                  ? 'Shows in the public feed.'
+                  : 'Only people with the link can view it.'}
+              </p>
+            </div>
+
             <Commentary
+              visibility={visibility}
               onReady={handlePublish}
               onBack={() => setStep('capture')}
             />
@@ -342,29 +408,77 @@ export function Capture({ session }: { session: Session }) {
         )}
 
         {step === 'done' && publishedSlug && (
-          <div className="flex flex-col items-center justify-center py-12 gap-4">
+          <div className="flex flex-col items-center justify-center py-8 gap-4">
             <div className="text-2xl">✓</div>
-            <p className="text-sm text-zinc-200 font-medium">Published!</p>
+            <p className="text-sm text-zinc-200 font-medium">
+              Published{visibility === 'unlisted' ? ' (unlisted)' : ''}!
+            </p>
             {clipState?.sourceType !== 'article' && (
               <p className="text-xs text-zinc-500 text-center">
                 Your clip is being processed. The landing page will update when it's ready.
               </p>
             )}
+
+            {/* Share — one click to copy the landing link */}
             {webAppUrl && (
-              <button
-                onClick={() => chrome.tabs.create({ url: `${webAppUrl}/a/${publishedSlug}` })}
-                className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition"
-              >
-                <ExternalLink className="w-4 h-4" />
-                View annotation
-              </button>
+              <div className="w-full space-y-2">
+                <div className="flex items-center gap-2 rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2">
+                  <span className="flex-1 text-xs text-zinc-400 truncate font-mono">
+                    {`${webAppUrl}/a/${publishedSlug}`}
+                  </span>
+                </div>
+                <button
+                  onClick={copyPublishedLink}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-medium transition"
+                >
+                  {linkCopied ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <LinkIcon className="w-4 h-4" />
+                      Copy link
+                    </>
+                  )}
+                </button>
+              </div>
             )}
-            <button
-              onClick={reset}
-              className="text-sm text-zinc-500 hover:text-zinc-300 transition"
-            >
-              Create another
-            </button>
+
+            {/* Add to collection */}
+            {publishedId && (
+              <div className="w-full space-y-2">
+                <button
+                  onClick={() => setShowCollections((prev) => !prev)}
+                  className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 transition"
+                >
+                  <FolderPlus className="w-4 h-4" />
+                  Add to collection
+                </button>
+                {showCollections && (
+                  <CollectionPicker session={session} annotationId={publishedId} />
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center gap-4">
+              {webAppUrl && (
+                <button
+                  onClick={() => chrome.tabs.create({ url: `${webAppUrl}/a/${publishedSlug}` })}
+                  className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  View annotation
+                </button>
+              )}
+              <button
+                onClick={reset}
+                className="text-sm text-zinc-500 hover:text-zinc-300 transition"
+              >
+                Create another
+              </button>
+            </div>
           </div>
         )}
       </div>
