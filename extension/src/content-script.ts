@@ -85,6 +85,52 @@ function getPageContext(): PageContext {
   return ctx;
 }
 
+// Geometry of the page's video element at capture start, used by the worker
+// to crop the full-tab recording down to just the player.
+interface CaptureCrop {
+  rect: { x: number; y: number; width: number; height: number };
+  dpr: number;
+  viewport: { width: number; height: number };
+}
+
+// Seek the page's video to the clip start (paused) and report its on-screen
+// geometry so the tab recording can later be cropped to the player.
+function prepareCapture(time: number): Promise<{ crop: CaptureCrop } | { error: string }> {
+  return new Promise((resolve) => {
+    const video = document.querySelector('video');
+    if (!video) {
+      resolve({ error: 'No video element found' });
+      return;
+    }
+
+    const finish = () => {
+      const rect = video.getBoundingClientRect();
+      resolve({
+        crop: {
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          dpr: window.devicePixelRatio,
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+        },
+      });
+    };
+
+    video.pause();
+    if (Math.abs(video.currentTime - time) < 0.05) {
+      finish();
+      return;
+    }
+    const onSeeked = () => {
+      video.removeEventListener('seeked', onSeeked);
+      clearTimeout(timer);
+      finish();
+    };
+    // Safety: don't hang forever if the seek target never buffers
+    const timer = setTimeout(onSeeked, 3000);
+    video.addEventListener('seeked', onSeeked);
+    video.currentTime = time;
+  });
+}
+
 // Video clip capture via start/stop flow
 let activeRecorder: MediaRecorder | null = null;
 let activeChunks: Blob[] = [];
@@ -182,6 +228,30 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (video && typeof message.time === 'number') {
       video.currentTime = message.time;
     }
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (message.type === 'PREPARE_CAPTURE') {
+    prepareCapture(message.time).then(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'PLAY_VIDEO') {
+    const video = document.querySelector('video');
+    if (!video) {
+      sendResponse({ error: 'No video element found' });
+      return false;
+    }
+    video
+      .play()
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ error: err.message || 'Playback failed' }));
+    return true;
+  }
+
+  if (message.type === 'PAUSE_VIDEO') {
+    document.querySelector('video')?.pause();
     sendResponse({ ok: true });
     return false;
   }

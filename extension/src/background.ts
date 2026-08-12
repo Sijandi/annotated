@@ -80,6 +80,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // === Tab capture for video clipping ===
+  // Returns a stream ID the offscreen document consumes via getUserMedia.
   if (message.type === 'CAPTURE_TAB') {
     const tabId = message.tabId;
     try {
@@ -97,11 +98,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ error: `tabCapture error: ${e.message}` });
     }
     return true;
-  }
-
-  if (message.type === 'TAB_CAPTURE_RESULT') {
-    chrome.storage.local.set({ captureResult: { dataUrl: message.dataUrl, error: message.error } });
-    return false;
   }
 });
 

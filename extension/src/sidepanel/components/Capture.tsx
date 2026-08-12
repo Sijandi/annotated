@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { LogOut, Loader2, ExternalLink } from 'lucide-react';
-import { YouTubeClipper } from './YouTubeClipper';
+import { YouTubeClipper, type CropInfo } from './YouTubeClipper';
 import { ArticleHighlighter } from './ArticleHighlighter';
 import { PodcastClipper } from './PodcastClipper';
 import { Commentary, type CommentaryData } from './Commentary';
@@ -30,6 +30,7 @@ interface ClipState {
   clipText?: string;
   audioSrc?: string;
   rawVideoBlob?: Blob;
+  crop?: CropInfo;
 }
 
 type Step = 'capture' | 'commentary' | 'publishing' | 'done';
@@ -70,7 +71,7 @@ export function Capture({ session }: { session: Session }) {
     await supabase.auth.signOut();
   };
 
-  const handleClipReady = async (data: { start: number; end: number; audioSrc?: string; videoBlob?: Blob }) => {
+  const handleClipReady = async (data: { start: number; end: number; audioSrc?: string; videoBlob?: Blob; crop?: CropInfo }) => {
     if (!pageContext) return;
 
     if (pageContext.sourceType === 'youtube') {
@@ -83,6 +84,7 @@ export function Capture({ session }: { session: Session }) {
         clipStart: data.start,
         clipEnd: data.end,
         rawVideoBlob: data.videoBlob,
+        crop: data.crop,
       });
       setStep('commentary');
     } else {
@@ -151,11 +153,29 @@ export function Capture({ session }: { session: Session }) {
         if (rawUploadErr) throw rawUploadErr;
         const { data: rawUrlData } = supabase.storage.from('clips').getPublicUrl(rawFilename);
         rawClipUrl = rawUrlData.publicUrl;
+
+        // Sidecar crop metadata for the worker (tab capture records the whole
+        // viewport; the worker crops to the player). Non-fatal if it fails —
+        // the worker just skips cropping.
+        if (clipState.crop) {
+          const cropBlob = new Blob([JSON.stringify(clipState.crop)], { type: 'application/json' });
+          const { error: cropUploadErr } = await supabase.storage
+            .from('clips')
+            .upload(`raw/${session.user.id}/${slug}.crop.json`, cropBlob, {
+              contentType: 'application/json',
+              upsert: true,
+            });
+          if (cropUploadErr) console.warn('[annotated] crop metadata upload failed:', cropUploadErr.message);
+        }
       }
 
-      // Articles and YouTube publish directly (YouTube embeds the player).
-      // Podcasts go to processing (worker clips the audio).
-      const status = clipState.sourceType === 'podcast' ? 'processing' : 'published';
+      // Articles publish directly. Podcasts and captured YouTube clips go to
+      // processing (worker clips the audio / transcodes the raw recording).
+      // YouTube without a captured blob keeps the legacy embed fallback.
+      const status =
+        clipState.sourceType === 'article' || (clipState.sourceType === 'youtube' && !rawVideoBlob)
+          ? 'published'
+          : 'processing';
 
       const { error: insertErr } = await supabase.from('annotations').insert({
         user_id: session.user.id,

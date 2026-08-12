@@ -7,6 +7,7 @@ var micChunks = [];
 // === Tab capture for video clipping ===
 var tabRecorder = null;
 var tabChunks = [];
+var tabAudioCtx = null;
 
 chrome.storage.local.onChanged.addListener(function(changes) {
   if (changes.audioCmd) {
@@ -46,6 +47,10 @@ function stopMicRecording() {
 }
 
 async function startTabCapture(streamId, duration) {
+  if (tabRecorder && tabRecorder.state !== 'inactive') {
+    chrome.storage.local.set({ captureStatus: { status: 'error', error: 'Capture already in progress', ts: Date.now() } });
+    return;
+  }
   try {
     // Use the stream ID from tabCapture API
     var stream = await navigator.mediaDevices.getUserMedia({
@@ -63,6 +68,11 @@ async function startTabCapture(streamId, duration) {
       }
     });
 
+    // Capturing a tab mutes it for the user — route the captured audio back
+    // to the speakers so playback stays audible while recording.
+    tabAudioCtx = new AudioContext();
+    tabAudioCtx.createMediaStreamSource(stream).connect(tabAudioCtx.destination);
+
     tabRecorder = new MediaRecorder(stream, {
       mimeType: 'video/webm;codecs=vp8,opus',
       videoBitsPerSecond: 2000000
@@ -74,22 +84,28 @@ async function startTabCapture(streamId, duration) {
       var blob = new Blob(tabChunks, { type: 'video/webm' });
       blobToResult(blob, 'TAB_CAPTURE_RESULT');
       stream.getTracks().forEach(function(t) { t.stop(); });
+      if (tabAudioCtx) {
+        tabAudioCtx.close();
+        tabAudioCtx = null;
+      }
       tabRecorder = null;
       tabChunks = [];
     };
 
     tabRecorder.start(100);
     console.log('[offscreen] tab capture started, duration:', duration);
+    // Tell the side panel recording is live so it can start playback
+    chrome.storage.local.set({ captureStatus: { status: 'recording', ts: Date.now() } });
 
-    // Auto-stop after duration
+    // Auto-stop after duration (+0.5s tolerance for playback start latency)
     if (duration) {
       setTimeout(function() {
         stopTabCapture();
-      }, (duration + 2) * 1000);
+      }, (duration + 0.5) * 1000);
     }
   } catch (err) {
     console.error('[offscreen] tab capture error:', err);
-    chrome.storage.local.set({ captureResult: { error: err.message } });
+    chrome.storage.local.set({ captureStatus: { status: 'error', error: err.message, ts: Date.now() } });
   }
 }
 
@@ -104,14 +120,14 @@ function blobToResult(blob, messageType) {
       chrome.runtime.sendMessage({ type: messageType, dataUrl: reader.result });
     } else {
       // For video, use storage since it can be large
-      chrome.storage.local.set({ captureResult: { dataUrl: reader.result } });
+      chrome.storage.local.set({ captureResult: { dataUrl: reader.result, ts: Date.now() } });
     }
   };
   reader.onerror = function() {
     if (messageType === 'AUDIO_RESULT') {
       chrome.runtime.sendMessage({ type: messageType, error: 'Failed to read blob' });
     } else {
-      chrome.storage.local.set({ captureResult: { error: 'Failed to read video blob' } });
+      chrome.storage.local.set({ captureResult: { error: 'Failed to read video blob', ts: Date.now() } });
     }
   };
   reader.readAsDataURL(blob);

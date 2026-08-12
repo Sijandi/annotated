@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { RefreshCw, UserPlus, UserMinus, ExternalLink, Trash2 } from 'lucide-react';
+import { RefreshCw, UserPlus, UserMinus, ExternalLink, Trash2, MessageCircle } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
+import { Comments } from './Comments';
 
 interface Annotation {
   id: string;
@@ -43,6 +44,8 @@ export function Feed({ session }: { session: Session }) {
   const [loading, setLoading] = useState(true);
   const [following, setFollowing] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>('all');
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
 
   const webAppUrl = import.meta.env.VITE_WEB_APP_URL || '';
 
@@ -54,6 +57,23 @@ export function Feed({ session }: { session: Session }) {
     if (data) setFollowing(new Set(data.map((f) => f.followed_id)));
   }, [session.user.id]);
 
+  const loadCommentCounts = useCallback(async (annotationIds: string[]) => {
+    if (annotationIds.length === 0) {
+      setCommentCounts({});
+      return;
+    }
+    // One bulk query for the whole feed; counting client-side avoids n+1 requests.
+    const { data } = await supabase
+      .from('comments')
+      .select('annotation_id')
+      .in('annotation_id', annotationIds);
+    const counts: Record<string, number> = {};
+    for (const row of data ?? []) {
+      counts[row.annotation_id] = (counts[row.annotation_id] ?? 0) + 1;
+    }
+    setCommentCounts(counts);
+  }, []);
+
   const loadFeed = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
@@ -62,9 +82,11 @@ export function Feed({ session }: { session: Session }) {
       .eq('status', 'published')
       .order('created_at', { ascending: false })
       .limit(30);
-    setAnnotations((data as any) ?? []);
+    const feed = (data as any) ?? [];
+    setAnnotations(feed);
     setLoading(false);
-  }, []);
+    loadCommentCounts(feed.map((a: Annotation) => a.id));
+  }, [loadCommentCounts]);
 
   useEffect(() => {
     loadFeed();
@@ -101,6 +123,25 @@ export function Feed({ session }: { session: Session }) {
     if (!confirm('Delete this annotation?')) return;
     await supabase.from('annotations').delete().eq('id', id);
     setAnnotations(prev => prev.filter(a => a.id !== id));
+  };
+
+  const toggleComments = (id: string) => {
+    setExpandedComments((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const adjustCommentCount = (id: string, delta: number) => {
+    setCommentCounts((prev) => ({
+      ...prev,
+      [id]: Math.max(0, (prev[id] ?? 0) + delta),
+    }));
   };
 
   const openAnnotation = (slug: string) => {
@@ -219,7 +260,22 @@ export function Feed({ session }: { session: Session }) {
               )}
 
               <div className="flex items-center justify-between">
-                <p className="text-xs text-zinc-500">{timeAgo(a.created_at)}</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-xs text-zinc-500">{timeAgo(a.created_at)}</p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleComments(a.id);
+                    }}
+                    className={`flex items-center gap-1 text-xs transition ${
+                      expandedComments.has(a.id) ? 'text-zinc-300' : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                    title={expandedComments.has(a.id) ? 'Hide comments' : 'Show comments'}
+                  >
+                    <MessageCircle className="w-3 h-3" />
+                    {commentCounts[a.id] ?? 0}
+                  </button>
+                </div>
                 {isOwnPost && (
                   <button
                     onClick={(e) => {
@@ -233,6 +289,16 @@ export function Feed({ session }: { session: Session }) {
                   </button>
                 )}
               </div>
+
+              {expandedComments.has(a.id) && (
+                <div className="cursor-default" onClick={(e) => e.stopPropagation()}>
+                  <Comments
+                    annotationId={a.id}
+                    session={session}
+                    onCountChange={(delta) => adjustCommentCount(a.id, delta)}
+                  />
+                </div>
+              )}
             </div>
           );
         })

@@ -127,7 +127,8 @@ def process_clip(annotation_id: str, source_url: str, source_type: str, start: f
 
 
 def _process_youtube(annotation_id: str, output_path: Path):
-    """Download raw clip from Supabase Storage, downscale to 240p mp4."""
+    """Download raw clip from Supabase Storage, crop to the player (if crop
+    metadata was uploaded alongside it), downscale to 240p mp4."""
     tmpdir = output_path.parent
 
     # Get the annotation to find the raw clip URL
@@ -146,17 +147,85 @@ def _process_youtube(annotation_id: str, output_path: Path):
 
     print(f"[worker] downloaded raw clip: {raw_path.stat().st_size} bytes")
 
-    # Downscale to 240p mp4
+    # Crop to player (when the extension uploaded crop metadata), then downscale
+    vf = _build_video_filter(_fetch_crop_info(raw_url), raw_path)
     cmd = [
         "ffmpeg",
         "-y",
         "-i", str(raw_path),
-        "-vf", f"scale=-2:{TARGET_HEIGHT}",
+        "-vf", vf,
         "-c:v", "libx264", "-preset", "fast", "-crf", "28",
         "-c:a", "aac", "-b:a", "96k",
         str(output_path),
     ]
     subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+
+
+def _fetch_crop_info(raw_url: str) -> dict | None:
+    """Fetch the sidecar crop JSON uploaded next to the raw clip
+    (clips/raw/<user>/<slug>.crop.json). Absent for canvas-fallback captures
+    and legacy clips — returns None and the clip is processed uncropped."""
+    if ".webm" not in raw_url:
+        return None
+    crop_url = raw_url.split(".webm", 1)[0] + ".crop.json"
+    try:
+        resp = httpx.get(crop_url, timeout=30, follow_redirects=True)
+        if resp.status_code != 200:
+            return None
+        return resp.json()
+    except Exception as e:
+        print(f"[worker] crop metadata fetch failed ({crop_url}): {e}")
+        return None
+
+
+def _probe_dimensions(video_path: Path) -> tuple[int, int]:
+    """Return (width, height) of the first video stream via ffprobe."""
+    out = subprocess.run(
+        [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=p=0",
+            str(video_path),
+        ],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    width, height = out.stdout.strip().splitlines()[0].split(",")[:2]
+    return int(width), int(height)
+
+
+def _build_video_filter(crop_info: dict | None, raw_path: Path) -> str:
+    """ffmpeg -vf chain: crop the tab recording to the player rect (if crop
+    metadata is present and sane), then downscale. Any problem with the crop
+    data degrades gracefully to plain downscaling."""
+    scale = f"scale=-2:{TARGET_HEIGHT}"
+    if not crop_info:
+        return scale
+    try:
+        rect = crop_info["rect"]
+        viewport = crop_info.get("viewport") or {}
+        dpr = float(crop_info.get("dpr", 1)) or 1.0
+        frame_w, frame_h = _probe_dimensions(raw_path)
+
+        # The captured frame is nominally viewport * devicePixelRatio, but
+        # Chrome may cap the capture resolution — derive the actual CSS-px →
+        # frame-px scale from the frame itself when the viewport is known.
+        sx = frame_w / viewport["width"] if viewport.get("width") else dpr
+        sy = frame_h / viewport["height"] if viewport.get("height") else dpr
+
+        x = max(0, min(int(rect["x"] * sx), frame_w - 2))
+        y = max(0, min(int(rect["y"] * sy), frame_h - 2))
+        w = min(int(rect["width"] * sx), frame_w - x)
+        h = min(int(rect["height"] * sy), frame_h - y)
+        if w < 16 or h < 16:
+            print(f"[worker] crop region too small ({w}x{h}), skipping crop")
+            return scale
+
+        print(f"[worker] applying crop={w}:{h}:{x}:{y} (frame {frame_w}x{frame_h})")
+        return f"crop={w}:{h}:{x}:{y},{scale}"
+    except Exception as e:
+        print(f"[worker] invalid crop metadata, skipping crop: {e}")
+        return scale
 
 
 def _process_podcast(audio_url: str, start: float, duration: float, output_path: Path):
