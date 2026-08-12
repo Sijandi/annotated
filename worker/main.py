@@ -21,12 +21,11 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from supabase import Client, create_client
 
+from transcode import MAX_CLIP_SECONDS, transcode_podcast, transcode_youtube
+
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 WORKER_SECRET = os.environ["WORKER_SECRET"]
-
-MAX_CLIP_SECONDS = 90
-TARGET_HEIGHT = 240  # spec: 240px, must be < 480p
 
 app = FastAPI(title="annotated-worker")
 sb: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -148,17 +147,7 @@ def _process_youtube(annotation_id: str, output_path: Path):
     print(f"[worker] downloaded raw clip: {raw_path.stat().st_size} bytes")
 
     # Crop to player (when the extension uploaded crop metadata), then downscale
-    vf = _build_video_filter(_fetch_crop_info(raw_url), raw_path)
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i", str(raw_path),
-        "-vf", vf,
-        "-c:v", "libx264", "-preset", "fast", "-crf", "28",
-        "-c:a", "aac", "-b:a", "96k",
-        str(output_path),
-    ]
-    subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+    transcode_youtube(raw_path, _fetch_crop_info(raw_url), output_path)
 
 
 def _fetch_crop_info(raw_url: str) -> dict | None:
@@ -178,66 +167,6 @@ def _fetch_crop_info(raw_url: str) -> dict | None:
         return None
 
 
-def _probe_dimensions(video_path: Path) -> tuple[int, int]:
-    """Return (width, height) of the first video stream via ffprobe."""
-    out = subprocess.run(
-        [
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width,height",
-            "-of", "csv=p=0",
-            str(video_path),
-        ],
-        check=True, capture_output=True, text=True, timeout=30,
-    )
-    width, height = out.stdout.strip().splitlines()[0].split(",")[:2]
-    return int(width), int(height)
-
-
-def _build_video_filter(crop_info: dict | None, raw_path: Path) -> str:
-    """ffmpeg -vf chain: crop the tab recording to the player rect (if crop
-    metadata is present and sane), then downscale. Any problem with the crop
-    data degrades gracefully to plain downscaling."""
-    scale = f"scale=-2:{TARGET_HEIGHT}"
-    if not crop_info:
-        return scale
-    try:
-        rect = crop_info["rect"]
-        viewport = crop_info.get("viewport") or {}
-        dpr = float(crop_info.get("dpr", 1)) or 1.0
-        frame_w, frame_h = _probe_dimensions(raw_path)
-
-        # The captured frame is nominally viewport * devicePixelRatio, but
-        # Chrome may cap the capture resolution — derive the actual CSS-px →
-        # frame-px scale from the frame itself when the viewport is known.
-        sx = frame_w / viewport["width"] if viewport.get("width") else dpr
-        sy = frame_h / viewport["height"] if viewport.get("height") else dpr
-
-        x = max(0, min(int(rect["x"] * sx), frame_w - 2))
-        y = max(0, min(int(rect["y"] * sy), frame_h - 2))
-        w = min(int(rect["width"] * sx), frame_w - x)
-        h = min(int(rect["height"] * sy), frame_h - y)
-        if w < 16 or h < 16:
-            print(f"[worker] crop region too small ({w}x{h}), skipping crop")
-            return scale
-
-        print(f"[worker] applying crop={w}:{h}:{x}:{y} (frame {frame_w}x{frame_h})")
-        return f"crop={w}:{h}:{x}:{y},{scale}"
-    except Exception as e:
-        print(f"[worker] invalid crop metadata, skipping crop: {e}")
-        return scale
-
-
 def _process_podcast(audio_url: str, start: float, duration: float, output_path: Path):
     """ffmpeg direct on audio URL — clip a 90s segment as mp3."""
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-ss", str(start),
-        "-t", str(duration),
-        "-i", audio_url,
-        "-acodec", "libmp3lame",
-        "-b:a", "128k",
-        str(output_path),
-    ]
-    subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+    transcode_podcast(audio_url, start, duration, output_path)
