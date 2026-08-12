@@ -110,8 +110,19 @@ If the bridge or the switch ever regress, the extension's canvas fallback
 still produces (silent) clips and the harness labels them `canvas-fallback`
 and prints the extension's own console diagnostics explaining why.
 
+The bridge also retries a capture command once after reattaching when the
+offscreen document was reaped and recreated mid-run — a lost `start` there was
+what used to intermittently degrade runs to silent canvas clips. Full strategy
+log and probe evidence: `CAPTURE-NOTES.md` (probes: `probe-capture.js`,
+`probe-offscreen.js`).
+
 ## Troubleshooting
 
+- **"Opening in existing browser session" at launch** — a previous run's
+  Chrome for Testing still holds `e2e/.profile`. Kill it and re-run:
+  ```sh
+  pkill -9 -f "user-data-dir=.*/e2e/.profile"
+  ```
 - **Login screen in the panel** — session transplant failed or is stale. Sign
   in via regular Chrome, quit Chrome (releases the LevelDB lock), then re-run
   with `--fresh-profile`.
