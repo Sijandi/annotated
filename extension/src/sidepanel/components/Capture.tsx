@@ -6,6 +6,7 @@ import { YouTubeClipper, type CropInfo } from './YouTubeClipper';
 import { ArticleHighlighter } from './ArticleHighlighter';
 import { PodcastClipper } from './PodcastClipper';
 import { Commentary, type CommentaryData } from './Commentary';
+import { getTargetTab } from '../../lib/targetTab';
 
 interface PageContext {
   url: string;
@@ -87,17 +88,19 @@ export function Capture({ session }: { session: Session }) {
   const webAppUrl = import.meta.env.VITE_WEB_APP_URL || '';
 
   useEffect(() => {
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-      if (!tab?.id) return;
-      chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_CONTEXT' }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.warn('content script not ready:', chrome.runtime.lastError.message);
-          return;
-        }
-        setPageContext(response);
-        setSourceTabId(tab.id ?? null);
-      });
-    });
+    getTargetTab()
+      .then((tab) => {
+        if (!tab.id) return;
+        chrome.tabs.sendMessage(tab.id, { type: 'GET_PAGE_CONTEXT' }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn('content script not ready:', chrome.runtime.lastError.message);
+            return;
+          }
+          setPageContext(response);
+          setSourceTabId(tab.id ?? null);
+        });
+      })
+      .catch((err) => console.warn('target tab lookup failed:', err.message));
   }, []);
 
   const signOut = async () => {

@@ -1,0 +1,13 @@
+{
+  "name": "annotated-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end clip generation harness: drives the Annotated Chrome extension UI with Playwright and publishes real clips.",
+  "scripts": {
+    "clips": "node generate-clips.js --batch"
+  },
+  "dependencies": {
+    "playwright": "^1.62.1"
+  }
+}

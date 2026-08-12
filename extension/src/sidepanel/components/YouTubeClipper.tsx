@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Clock, Play, Square, AlertCircle, Video } from 'lucide-react';
+import { getTargetTab } from '../../lib/targetTab';
 
 export interface CropInfo {
   rect: { x: number; y: number; width: number; height: number };
@@ -28,17 +29,8 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function getActiveTab(): Promise<chrome.tabs.Tab> {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-      if (!tab?.id) return reject(new Error('No active tab'));
-      resolve(tab);
-    });
-  });
-}
-
 // Pass `tabId` to pin a long-running flow (e.g. capture) to one tab even if
-// the user switches tabs mid-way; otherwise the active tab is used.
+// the user switches tabs mid-way; otherwise the target (active) tab is used.
 function sendToTab(message: any, tabId?: number): Promise<any> {
   if (tabId !== undefined) {
     return new Promise((resolve, reject) => {
@@ -48,12 +40,7 @@ function sendToTab(message: any, tabId?: number): Promise<any> {
       });
     });
   }
-  return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-      if (!tab?.id) return reject(new Error('No active tab'));
-      sendToTab(message, tab.id).then(resolve).catch(reject);
-    });
-  });
+  return getTargetTab().then((tab) => sendToTab(message, tab.id!));
 }
 
 function sendToBackground(message: any): Promise<any> {
@@ -249,7 +236,7 @@ export function YouTubeClipper({ title, thumbnail, onClipReady }: Props) {
     let tabId: number | undefined;
 
     try {
-      const tab = await getActiveTab();
+      const tab = await getTargetTab();
       tabId = tab.id!;
 
       // Seek to the clip start (paused) and grab the player geometry for cropping
