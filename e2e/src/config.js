@@ -19,11 +19,13 @@ export const PROFILE_DIR = path.join(E2E_DIR, '.profile');
 export const ARTIFACTS_DIR = path.join(E2E_DIR, '.artifacts');
 
 // Phil's real Chrome profile holds the logged-in Supabase session for the
-// extension (chrome.storage.local lives in this LevelDB directory).
+// extension (chrome.storage.local lives in this LevelDB directory). The
+// Supabase session is not bound to the extension ID, so SESSION_SOURCE_ID lets
+// a session captured under a prior ID seed a freshly-pinned build.
 export const CHROME_SESSION_LEVELDB = path.join(
   os.homedir(),
   'Library/Application Support/Google/Chrome/Default/Local Extension Settings',
-  EXTENSION_ID
+  process.env.SESSION_SOURCE_ID || EXTENSION_ID
 );
 
 export const SIDEPANEL_URL = `chrome-extension://${EXTENSION_ID}/src/sidepanel/index.html`;
