@@ -3,6 +3,7 @@
   "name": "Annotated",
   "version": "0.1.0",
   "description": "Clip and annotate media from anywhere on the web. Public social feed for annotations.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq2H//mbi77Z0ZEjsqNuQ5PForlttns7jIwd6hgzfVQD7AfMKCXa2G6phlN5x3A+8JyiGkibi+dUYmp7RcUPsY4Vh1Tfyb5/afU37H2WrzRtnsh0NiJT6yUnJUsio85MEuEXm+94gHfqJegLdbdlMLtn2AkxNZV1E4xD16ipe7433nAY7z2xNyA319oKYlTgtKtStPomrozOTqiu+PMGrBBUTMXgxflyx9iL8dMQ0SDIpF2bUMnOb/UDtsRgfdPcN+uAeFGzVXA+gd+OdiU2uTwnL34FpiR9GZoRh0I7YxbqNzA2CpLnN+B20GlSg+0ytb7y9hBA3+qYro7I0xC7/oQIDAQAB",
   "permissions": [
     "sidePanel",
     "activeTab",

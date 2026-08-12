@@ -57,7 +57,7 @@ Flags:
 
 1. Launches persistent Chromium from `e2e/.profile` with
    `--load-extension=extension/dist`. The unpacked-extension ID
-   (`jnocnjmabcleljofoefidfnndccmgief`) is derived from the dist path, so the
+   (`mjcafpknomkgfmipbpogkgicbepalddh`) is derived from the dist path, so the
    transplanted session and `--allowlisted-extension-id` line up.
 2. Opens the YouTube watch page, dismisses consent/dialogs, lets any pre-roll
    ad finish, and seeks the player to the clip start.

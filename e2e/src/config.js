@@ -12,7 +12,7 @@ const REPO_ROOT = path.dirname(E2E_DIR);
 
 // Loading an unpacked extension derives its ID from the absolute dist path,
 // so this ID is stable for this checkout (same path Phil loaded manually).
-export const EXTENSION_ID = 'jnocnjmabcleljofoefidfnndccmgief';
+export const EXTENSION_ID = 'mjcafpknomkgfmipbpogkgicbepalddh';
 
 export const EXTENSION_DIST = path.join(REPO_ROOT, 'extension', 'dist');
 export const PROFILE_DIR = path.join(E2E_DIR, '.profile');

@@ -12,7 +12,7 @@ actual cause of the remaining silent-canvas runs. Verified end-to-end
 probes `aac,audio` with mean volume −18.8 dB (real program audio, not silence).
 
 Environment: Playwright 1.62 / Google Chrome for Testing **151.0.7922.34**
-(`chromium-1234`), extension id `jnocnjmabcleljofoefidfnndccmgief`, macOS arm64.
+(`chromium-1234`), extension id `mjcafpknomkgfmipbpogkgicbepalddh`, macOS arm64.
 
 ## Strategies attempted (probe scripts: `probe-capture.js`, `probe-offscreen.js`)
 
