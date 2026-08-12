@@ -70,7 +70,19 @@ const POLYFILL = `(() => {
   const mirror = {};
   globalThis.__e2eStorageBridge = { queue, mirror };
   const local = {
-    set: (items) => { queue.push(items); Object.assign(mirror, items); return Promise.resolve(); },
+    // captureResult carries the whole recording as a base64 data URL. Real
+    // chrome.storage.local enforces a ~10MB quota that a 30s tabCapture clip
+    // can exceed when relayed. The panel only ever fetch()es the value, so
+    // hand it a same-origin blob URL minted here instead — the offscreen
+    // document (and therefore the blob) outlives the panel's immediate fetch.
+    set: async (items) => {
+      if (items.captureResult?.dataUrl) {
+        const blob = await (await fetch(items.captureResult.dataUrl)).blob();
+        items = { captureResult: { ...items.captureResult, dataUrl: URL.createObjectURL(blob) } };
+      }
+      queue.push(items);
+      Object.assign(mirror, items);
+    },
     get: (keys) => {
       let result = {};
       if (keys == null) result = { ...mirror };
@@ -187,12 +199,26 @@ export class CaptureBridge {
         });
         if (cmd?.ts && cmd.ts !== this.lastCmdTs) {
           this.lastCmdTs = cmd.ts;
-          if (cmd.action === 'start') {
-            await this.evalInOffscreen(
-              `startTabCapture(${JSON.stringify(cmd.streamId)}, ${JSON.stringify(cmd.duration)}); 'started'`
-            );
-          } else if (cmd.action === 'stop') {
-            await this.evalInOffscreen(`stopTabCapture(); 'stopped'`);
+          const expr =
+            cmd.action === 'start'
+              ? `startTabCapture(${JSON.stringify(cmd.streamId)}, ${JSON.stringify(cmd.duration)}); 'started'`
+              : cmd.action === 'stop'
+                ? `stopTabCapture(); 'stopped'`
+                : null;
+          if (expr) {
+            try {
+              await this.evalInOffscreen(expr);
+            } catch (err) {
+              // The offscreen document was reaped and recreated (often by the
+              // extension's own ENSURE_OFFSCREEN) between drains, so our CDP
+              // session is dead and the polyfill is gone. Losing a 'start'
+              // here is what silently degraded runs to the canvas fallback:
+              // reattach + re-polyfill and retry the same command once —
+              // fresh streamIds are still valid within this window.
+              console.warn(`[e2e] capture bridge: ${cmd.action} eval failed (${err.message}), reattaching + retrying`);
+              await this.reattach();
+              await this.evalInOffscreen(expr);
+            }
           }
         }
 
@@ -205,9 +231,15 @@ export class CaptureBridge {
           await this.serviceWorker.evaluate((obj) => chrome.storage.local.set(obj), items);
         }
       } catch (err) {
-        if (!this.stopped) {
+        // Once the run is tearing down, the service worker / browser targets
+        // disappear and every evaluate throws — that's expected teardown, not
+        // a capture failure, so stay quiet.
+        const closing = this.stopped || /closed|crashed|Target/.test(err.message);
+        if (!closing) {
           console.warn('[e2e] capture bridge:', err.message);
           await this.reattach().catch((e) => console.warn('[e2e] bridge reattach failed:', e.message));
+        } else if (this.stopped) {
+          return;
         }
       }
       await new Promise((r) => setTimeout(r, POLL_MS));

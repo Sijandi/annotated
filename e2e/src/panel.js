@@ -101,6 +101,10 @@ export async function recordAndPublish(context, panelPage, consoleLog, { duratio
     predicate: (p) => p.url().includes('/a/'),
     timeout: PUBLISH_TIMEOUT_MS,
   });
+  // If publish fails before that tab appears, this promise rejects after the
+  // failure is already being handled — pre-arm a handler so the late
+  // rejection can't crash the process mid-batch.
+  landingPagePromise.catch(() => {});
   await panelPage.getByRole('button', { name: 'Confirm' }).click();
 
   await panelPage.getByText('Published!').waitFor({ timeout: PUBLISH_TIMEOUT_MS });
