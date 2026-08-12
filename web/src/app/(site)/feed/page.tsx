@@ -20,6 +20,7 @@ export default async function FeedPage() {
     .from("annotations")
     .select("id, slug, source_type, source_title, source_url, source_thumbnail_url, source_metadata, commentary_text, clip_text, created_at, user_id, clip_start_seconds, clip_end_seconds")
     .eq("status", "published")
+    .eq("visibility", "public")
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -60,11 +61,27 @@ export default async function FeedPage() {
     commentMap.set(c.annotation_id, (commentMap.get(c.annotation_id) ?? 0) + 1);
   });
 
+  // Get creator endorsements (at most one per annotation)
+  const { data: endorsements } = annotationIds.length
+    ? await supabase
+        .from("endorsements")
+        .select("annotation_id, display_name, message")
+        .in("annotation_id", annotationIds)
+    : { data: [] };
+
+  const endorsementMap = new Map(
+    (endorsements ?? []).map(e => [
+      e.annotation_id,
+      { display_name: e.display_name, message: e.message },
+    ])
+  );
+
   const enriched = (annotations ?? []).map(a => ({
     ...a,
     profile: profileMap.get(a.user_id),
     likeCount: likeMap.get(a.id) ?? 0,
     commentCount: commentMap.get(a.id) ?? 0,
+    endorsement: endorsementMap.get(a.id) ?? null,
   }));
 
   return <FeedClient annotations={enriched} />;

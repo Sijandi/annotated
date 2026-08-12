@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { SourceBadge } from "./SourceBadge";
 import { LikeButton } from "./LikeButton";
+import { EndorsementBadge } from "./EndorsementBadge";
 import { timeAgo } from "@/lib/time";
 
 // Shape of the source_metadata jsonb column, captured by the extension
@@ -40,6 +41,10 @@ interface Annotation {
   } | undefined;
   likeCount: number;
   commentCount: number;
+  endorsement: {
+    display_name: string | null;
+    message: string | null;
+  } | null;
 }
 
 type SortMode = "recent" | "trending";
@@ -219,6 +224,11 @@ export function FeedClient({ annotations }: { annotations: Annotation[] }) {
                   {/* Commentary preview */}
                   {a.commentary_text && (
                     <p className="text-sm text-zinc-400 line-clamp-2">{a.commentary_text}</p>
+                  )}
+
+                  {/* Creator endorsement */}
+                  {a.endorsement && (
+                    <EndorsementBadge endorsement={a.endorsement} compact />
                   )}
 
                   {/* Actions row */}

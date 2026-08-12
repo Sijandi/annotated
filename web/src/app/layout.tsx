@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Instrument_Serif } from "next/font/google";
 import "./globals.css";
-import { Header } from "@/components/Header";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -30,8 +29,7 @@ export default function RootLayout({
       className={`${inter.variable} ${instrumentSerif.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[#09090b] text-zinc-100 font-[family-name:var(--font-inter)]">
-        <Header />
-        <main className="flex-1">{children}</main>
+        {children}
       </body>
     </html>
   );

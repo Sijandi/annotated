@@ -8,6 +8,9 @@ import { FollowButton } from "@/components/FollowButton";
 import { DeleteButton } from "@/components/DeleteButton";
 import { ShareButton } from "@/components/ShareButton";
 import { LikeButton } from "@/components/LikeButton";
+import { EmbedButton } from "@/components/EmbedButton";
+import { EndorsementBadge } from "@/components/EndorsementBadge";
+import { LicenseInterestButton } from "@/components/LicenseInterestButton";
 
 export const dynamic = "force-dynamic";
 
@@ -124,8 +127,27 @@ export default async function AnnotationPage(
     .eq("id", annotation.user_id)
     .single();
 
+  // Creator endorsement, if the original creator has claimed + endorsed this clip
+  const { data: endorsement } = await supabase
+    .from("endorsements")
+    .select("display_name, message")
+    .eq("annotation_id", annotation.id)
+    .maybeSingle();
+
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 space-y-8">
+      {/* Unlisted badge — link is the secret; legacy rows default to public */}
+      {annotation.visibility === "unlisted" && (
+        <div className="flex justify-end -mb-4">
+          <span className="inline-flex items-center gap-1.5 text-xs text-zinc-500 bg-zinc-900 border border-zinc-800 rounded-full px-2.5 py-1">
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            Unlisted — only people with the link can see this
+          </span>
+        </div>
+      )}
       {/* Processing state */}
       {annotation.status === "processing" && (
         <div className="flex flex-col items-center justify-center py-20 space-y-4">
@@ -259,10 +281,14 @@ export default async function AnnotationPage(
         <div className="flex items-center gap-3">
           <LikeButton annotationId={annotation.id} />
           <ShareButton slug={slug} />
+          <EmbedButton slug={slug} />
           <FollowButton targetUserId={annotation.user_id} />
           <DeleteButton annotationId={annotation.id} annotationUserId={annotation.user_id} />
         </div>
       </div>
+
+      {/* Creator endorsement — the premium trust signal */}
+      {endorsement && <EndorsementBadge endorsement={endorsement} />}
 
       {/* Commentary */}
       {(annotation.commentary_text || annotation.commentary_audio_url) && (
@@ -288,6 +314,11 @@ export default async function AnnotationPage(
       {/* Comments */}
       <div className="border-t border-zinc-800 pt-6">
         <CommentSection annotationId={annotation.id} />
+      </div>
+
+      {/* Viewer-side licensing affordance */}
+      <div className="text-center">
+        <LicenseInterestButton annotationId={annotation.id} />
       </div>
 
       {/* Claim button */}
